@@ -8,13 +8,15 @@
     <style>
         body { background-color: #f8fafc; color: #1e293b; font-family: sans-serif; }
         .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s; }
-        .card:hover { border-color: #3b82f6; }
         .sticky-bottom { position: sticky; bottom: 0; background: white; border-top: 3px solid #3b82f6; padding: 16px; box-shadow: 0 -10px 15px -3px rgba(0,0,0,0.1); z-index: 50; }
         .tag { display: inline-flex; align-items: center; background: #eff6ff; color: #1d4ed8; padding: 4px 10px; border-radius: 20px; margin: 2px; border: 1px solid #dbeafe; font-size: 0.75rem; font-weight: 600; }
         .tag-remove { margin-left: 6px; cursor: pointer; color: #ef4444; }
         .problem-box { background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 8px; border-radius: 4px; }
         .feedback-box { background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 8px; border-radius: 4px; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .mic-btn { cursor: pointer; transition: transform 0.2s; }
+        .mic-btn:active { transform: scale(0.9); }
+        .mic-active { color: #ef4444; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body class="pb-80">
@@ -22,20 +24,19 @@
 <div class="max-w-3xl mx-auto p-4">
     <header class="flex justify-between items-center mb-6 py-2">
         <h1 class="text-xl font-black text-blue-800 tracking-tight italic">毎日の作業日報</h1>
-        <div class="flex gap-2">
-            <button onclick="exportData()" class="text-[10px] bg-gray-100 px-3 py-2 rounded-lg font-bold">📤 出力</button>
-            <label class="text-[10px] bg-gray-100 px-3 py-2 rounded-lg font-bold cursor-pointer">
+        <div class="flex gap-2 text-[10px] font-bold">
+            <button onclick="exportData()" class="bg-gray-100 px-3 py-2 rounded-lg">📤 出力</button>
+            <label class="bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
                 📥 取込 <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)">
             </label>
-            <button onclick="hardReset()" class="text-[10px] bg-red-50 px-3 py-2 rounded-lg font-bold text-red-600">⚠️ 初期化</button>
         </div>
     </header>
 
     <div class="flex items-center justify-between mb-6 bg-white p-3 rounded-xl shadow-sm border">
         <button onclick="changeDate(-1)" class="p-2 hover:bg-gray-100 rounded-full text-xl">◀</button>
         <div class="text-center">
-            <input type="date" id="datePicker" onchange="jumpToDate()" class="font-bold text-lg cursor-pointer text-blue-700 bg-transparent outline-none">
-            <div id="dayOfWeek" class="text-xs text-gray-400 font-medium"></div>
+            <input type="date" id="datePicker" onchange="jumpToDate()" class="font-bold text-lg cursor-pointer text-blue-700 outline-none bg-transparent">
+            <div id="dayOfWeek" class="text-xs text-gray-400"></div>
         </div>
         <button onclick="changeDate(1)" class="p-2 hover:bg-gray-100 rounded-full text-xl">▶</button>
     </div>
@@ -70,15 +71,17 @@
         <div class="grid grid-cols-3 gap-2 mb-4">
             <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🏠 ③ 住居</label>
                 <select id="housing" class="border p-2 rounded-lg w-full text-xs">
-                    <option value="マンション">マンション</option><option value="マンション（OL）" selected>マンション（OL）</option>
-                    <option value="アパート（OL）">アパート（OL）</option><option value="アパート">アパート</option>
+                    <option value="マンション">マンション</option><option value="マンション（AL）" selected>マンション（AL）</option>
+                    <option value="アパート（AL）">アパート（AL）</option><option value="アパート">アパート</option>
                     <option value="戸建て">戸建て</option><option value="その他">その他</option>
                 </select>
             </div>
             <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🔄 ④ 区分</label>
                 <select id="type" class="border p-2 rounded-lg w-full text-xs">
                     <option value="開栓" selected>開栓</option><option value="開栓（他小売）">開栓（他小売）</option>
-                    <option value="閉栓">閉栓</option><option value="入居前試点火">入居前試点火</option><option value="その他">その他</option>
+                    <option value="閉栓">閉栓</option><option value="入居前試点火">入居前試点火</option>
+                    <option value="開栓中開栓">開栓中開栓</option><option value="不特定開栓">不特定開栓</option>
+                    <option value="その他">その他</option>
                 </select>
             </div>
             <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🛡️ ⑤ 圧力</label>
@@ -89,49 +92,60 @@
             </div>
         </div>
 
-        <div class="mb-4">
-            <label class="block text-xs font-bold text-gray-500 mb-1">🔥 ⑥ ガス器具</label>
-            <div id="applianceList" class="flex flex-wrap gap-1 mb-2"></div>
-            <div class="flex gap-2">
-                <select id="applianceSelect" class="border p-2 rounded-lg text-xs flex-1">
-                    <option value="ﾋﾞﾙﾄｲﾝｺﾝﾛ">ﾋﾞﾙﾄｲﾝｺﾝﾛ</option><option value="給湯器">給湯器</option>
-                    <option value="CH熱源機">CH熱源機</option><option value="ｶﾞｽﾃｰﾌﾞﾙ">ｶﾞｽﾃｰﾌﾞﾙ</option>
-                    <option value="元止湯沸器">元止湯沸器</option><option value="温水暖房熱源器（CH）">温水暖房熱源器（CH）</option>
-                </select>
-                <button onclick="addAppliance()" class="bg-blue-100 text-blue-700 px-4 py-1 rounded-lg text-xs font-bold">追加</button>
-            </div>
+        <div class="mb-4 text-xs font-bold text-gray-500">🔥 ⑥ ガス器具</div>
+        <div id="applianceList" class="flex flex-wrap gap-1 mb-2"></div>
+        <div class="flex gap-2 mb-4">
+            <select id="applianceSelect" class="border p-2 rounded-lg text-xs flex-1">
+                <option value="ﾋﾞﾙﾄｲﾝｺﾝﾛ">ﾋﾞﾙﾄｲﾝｺﾝﾛ</option><option value="給湯器">給湯器</option>
+                <option value="CH熱源機">CH熱源機</option><option value="ｶﾞｽﾃｰﾌﾞﾙ">ｶﾞｽﾃｰﾌﾞﾙ</option>
+                <option value="元止湯沸器">元止湯沸器</option><option value="温水暖房熱源器（CH）">温水暖房熱源器（CH）</option>
+            </select>
+            <button onclick="addAppliance()" class="bg-blue-100 text-blue-700 px-4 py-1 rounded-lg text-xs font-bold">追加</button>
         </div>
 
-        <div class="mb-6">
-            <label class="block text-xs font-bold text-gray-500 mb-1">📋 ⑦ プラン</label>
+        <div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-1">📋 ⑦ プラン</label>
             <select id="plan" class="border p-2 rounded-lg w-full text-sm">
                 <option value="がすてき" selected>がすてき</option><option value="選択約款(払込票）">選択約款(払込票）</option>
                 <option value="あったかとくとく">あったかとくとく</option><option value="床暖とくとく">床暖とくとく</option>
-                <option value="その他">その他</option>
+                <option value="なし（他小売）">なし（他小売）</option><option value="その他">その他</option>
             </select>
         </div>
 
         <div class="space-y-4 border-t pt-4">
-            <div><label class="block text-sm font-bold text-red-600 mb-1">⑧ 具体的問題</label>
-                <textarea id="problem" class="border p-3 rounded-lg w-full h-24 text-sm" placeholder="現場の状況..."></textarea>
+            <div>
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-sm font-bold text-red-600">⑧ 具体的問題</label>
+                    <button onclick="startVoice('problem')" class="mic-btn text-red-400" id="mic-problem">🎤 音声入力</button>
+                </div>
+                <textarea id="problem" class="border p-3 rounded-lg w-full h-24 text-sm"></textarea>
             </div>
-            <div><label class="block text-sm font-bold text-green-600 mb-1">⑨ ﾌｨｰﾄﾞﾊﾞｯｸ</label>
-                <textarea id="feedback" class="border p-3 rounded-lg w-full h-24 text-sm" placeholder="対策・学び..."></textarea>
+            <div>
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-sm font-bold text-green-600">⑨ ﾌｨｰﾄﾞﾊﾞｯｸ</label>
+                    <button onclick="startVoice('feedback')" class="mic-btn text-green-400" id="mic-feedback">🎤 音声入力</button>
+                </div>
+                <textarea id="feedback" class="border p-3 rounded-lg w-full h-24 text-sm"></textarea>
             </div>
         </div>
 
-        <button id="saveBtn" onclick="saveEntry()" class="w-full mt-4 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-700">
+        <button id="saveBtn" onclick="saveEntry()" class="w-full mt-4 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all">
             この案件を登録
         </button>
     </section>
 
-    <div id="entriesContainer" class="space-y-4 mt-8"></div>
+    <div id="entriesContainer" class="space-y-4 mt-8 pb-10"></div>
 </div>
 
 <div class="sticky-bottom max-w-3xl mx-auto rounded-t-2xl">
     <div class="grid grid-cols-2 gap-3 mb-4">
-        <input type="text" id="dailySummary" oninput="saveToLocalStorage()" class="border p-2 rounded-lg text-sm" placeholder="本日の総括">
-        <input type="text" id="dailyNotes" oninput="saveToLocalStorage()" class="border p-2 rounded-lg text-sm" placeholder="備考">
+        <div>
+            <div class="flex justify-between items-center px-1"><label class="text-[10px] font-bold text-gray-400">総括</label><button onclick="startVoice('dailySummary')" class="text-[10px] text-blue-400">🎤入力</button></div>
+            <input type="text" id="dailySummary" oninput="saveToLocalStorage()" class="border p-2 rounded-lg w-full text-sm">
+        </div>
+        <div>
+            <div class="flex justify-between items-center px-1"><label class="text-[10px] font-bold text-gray-400">備考</label><button onclick="startVoice('dailyNotes')" class="text-[10px] text-blue-400">🎤入力</button></div>
+            <input type="text" id="dailyNotes" oninput="saveToLocalStorage()" class="border p-2 rounded-lg w-full text-sm">
+        </div>
     </div>
     <div class="flex gap-2">
         <button onclick="copyDailyText()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-black">日報コピー</button>
@@ -145,6 +159,25 @@
     let currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ", "給湯器"];
     let editingId = null;
 
+    // --- 音声入力機能 ---
+    function startVoice(targetId) {
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'ja-JP';
+        const btn = document.getElementById('mic-' + targetId) || null;
+        if(btn) btn.classList.add('mic-active');
+
+        recognition.onresult = (event) => {
+            const text = event.results[0][0].transcript;
+            const input = document.getElementById(targetId);
+            input.value += (input.value ? ' ' : '') + text;
+            saveToLocalStorage();
+        };
+
+        recognition.onend = () => { if(btn) btn.classList.remove('mic-active'); };
+        recognition.start();
+    }
+
+    // --- 基本機能 ---
     window.onload = () => {
         initTimeSelects();
         setCurrentDate(new Date());
@@ -164,10 +197,10 @@
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
         const d = String(date.getDate()).padStart(2, '0');
-        const dateKey = `${y}-${m}-${d}`;
-        document.getElementById('datePicker').value = dateKey;
+        const key = `${y}-${m}-${d}`;
+        document.getElementById('datePicker').value = key;
         document.getElementById('dayOfWeek').innerText = `${['日','月','火','水','木','金','土'][date.getDay()]}曜日`;
-        loadData(dateKey);
+        loadData(key);
     }
 
     function changeDate(diff) {
@@ -176,13 +209,10 @@
         setCurrentDate(current);
     }
 
-    function jumpToDate() {
-        setCurrentDate(new Date(document.getElementById('datePicker').value));
-    }
+    function jumpToDate() { setCurrentDate(new Date(document.getElementById('datePicker').value)); }
 
     function loadData(dateKey) {
         const data = db[dateKey] || { entries: [], summary: "", notes: "" };
-        // 参照を切るためにコピー
         currentEntries = data.entries ? [...data.entries] : [];
         document.getElementById('dailySummary').value = data.summary || "";
         document.getElementById('dailyNotes').value = data.notes || "";
@@ -223,18 +253,7 @@
 
     function saveEntry() {
         const btn = document.getElementById('saveBtn');
-        const prob = document.getElementById('problem').value;
-        
-        // 重複チェック（連打防止）
-        if(!editingId && currentEntries.length > 0) {
-            const last = currentEntries[currentEntries.length-1];
-            if(last.problem === prob && last.areaDetail === document.getElementById('areaDetail').value) {
-                if(!confirm("直前と同じ内容ですが、登録しますか？")) return;
-            }
-        }
-
-        btn.disabled = true; // 連打防止
-
+        btn.disabled = true;
         const entry = {
             id: editingId || Date.now(),
             area: document.getElementById('area').value,
@@ -245,7 +264,7 @@
             pressure: document.getElementById('pressure').value,
             appliances: [...currentAppliances],
             plan: document.getElementById('plan').value,
-            problem: prob,
+            problem: document.getElementById('problem').value,
             feedback: document.getElementById('feedback').value
         };
 
@@ -260,11 +279,9 @@
 
         saveToLocalStorage();
         renderEntries();
-        
         document.getElementById('problem').value = '';
         document.getElementById('feedback').value = '';
-        
-        setTimeout(() => { btn.disabled = false; }, 1000); // 1秒後に解除
+        setTimeout(() => { btn.disabled = false; }, 500);
     }
 
     function editEntry(id) {
@@ -284,12 +301,12 @@
         document.getElementById('feedback').value = e.feedback;
         currentAppliances = [...e.appliances];
         renderAppliances();
-        document.getElementById('saveBtn').innerText = "案件内容を更新";
+        document.getElementById('saveBtn').innerText = "案件を更新する";
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function deleteEntry(id) {
-        if(confirm("この案件を削除しますか？")) {
+        if(confirm("削除しますか？")) {
             currentEntries = currentEntries.filter(e => e.id !== id);
             saveToLocalStorage();
             renderEntries();
@@ -298,10 +315,7 @@
 
     function renderEntries() {
         const cont = document.getElementById('entriesContainer');
-        cont.innerHTML = `<h2 class="font-bold text-gray-400 text-xs px-2 flex justify-between items-center mb-4">
-            <span>登録済み (${currentEntries.length}件)</span>
-            <button onclick="clearToday()" class="text-red-400 hover:underline">今日の全削除</button>
-        </h2>` + currentEntries.map((e, i) => `
+        cont.innerHTML = `<h2 class="font-bold text-gray-400 text-xs px-2 mb-4">登録済み (${currentEntries.length}件)</h2>` + currentEntries.map((e, i) => `
             <div class="card relative">
                 <div class="flex justify-between items-start mb-2 font-bold text-blue-800 text-sm">
                     <span>${i+1}件目: ${e.area} ${e.areaDetail}</span>
@@ -320,22 +334,6 @@
         `).join('');
     }
 
-    function clearToday() {
-        if(confirm("今日登録した全ての案件を削除しますか？")) {
-            currentEntries = [];
-            saveToLocalStorage();
-            renderEntries();
-        }
-    }
-
-    function hardReset() {
-        if(confirm("【警告】全てのデータ（過去分含む）を消去して初期状態に戻しますか？")) {
-            localStorage.clear();
-            location.reload();
-        }
-    }
-
-    // --- コピー・出力機能 ---
     function copyDailyText() {
         const dateKey = document.getElementById('datePicker').value;
         const d = new Date(dateKey);
@@ -344,7 +342,7 @@
             text += `${i+1}件目：内容「${e.problem || '特記事項なし'}」\n①地域：${e.area} ${e.areaDetail}　②時間：${e.time}頃　③住居：${e.housing}　④${e.type}\n⑤ガス圧力：${e.pressure}　⑥ガス器具：${e.appliances.join('・')}　⑦プラン：${e.plan}\n⑧具体的問題：${e.problem}\n⑨ﾌｨｰﾄﾞﾊﾞｯｸ：${e.feedback}\n\n`;
         });
         text += `まとめ：「${document.getElementById('dailySummary').value}」\n備考：「${document.getElementById('dailyNotes').value}」`;
-        navigator.clipboard.writeText(text).then(() => alert("クリップボードにコピーしました！"));
+        navigator.clipboard.writeText(text).then(() => alert("コピーしました！"));
     }
 
     function copyWeeklyText() {
@@ -360,7 +358,7 @@
                 text += "\n";
             }
         }
-        navigator.clipboard.writeText(text).then(() => alert("1週間分をコピーしました！"));
+        navigator.clipboard.writeText(text).then(() => alert("週間分をコピーしました！"));
     }
 
     function exportData() {
@@ -374,13 +372,10 @@
     function importData(event) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                db = {...db, ...data};
-                localStorage.setItem('tohoDailyReportDB', JSON.stringify(db));
-                loadData(document.getElementById('datePicker').value);
-                alert("インポートに成功しました。");
-            } catch(e) { alert("形式が正しくありません。"); }
+            db = {...db, ...JSON.parse(e.target.result)};
+            localStorage.setItem('tohoDailyReportDB', JSON.stringify(db));
+            loadData(document.getElementById('datePicker').value);
+            alert("インポートしました。");
         };
         reader.readAsText(event.target.files[0]);
     }
