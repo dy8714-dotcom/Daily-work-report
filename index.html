@@ -30,6 +30,14 @@
         .export-btn { font-size: 11px; font-weight: 700; padding: 8px 12px; border-radius: 8px; transition: all 0.2s; }
         .export-btn:active { transform: scale(0.95); }
         .flash-msg { position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:white;padding:10px 24px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999; }
+        .img-preview-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .img-preview-item { position: relative; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 2px solid #e2e8f0; }
+        .img-preview-item img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+        .img-preview-item .img-remove { position: absolute; top: -2px; right: -2px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center; }
+        .img-entry { max-width: 120px; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; }
+        .img-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 20000; cursor: pointer; }
+        .img-modal img { max-width: 95vw; max-height: 90vh; border-radius: 8px; }
+        .img-size-bar { height: 4px; border-radius: 2px; margin-top: 4px; transition: width 0.3s; }
     </style>
 </head>
 <body class="pb-4">
@@ -168,6 +176,31 @@
                 <textarea id="feedback" class="border p-3 rounded-lg w-full h-24 text-sm"></textarea>
             </div>
         </div>
+
+        <!-- ⑩ 画像添付 -->
+        <div class="mt-4 border-t pt-4">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-sm font-bold text-indigo-600">📷 ⑩ 写真添付</label>
+                <span id="imgSizeInfo" class="text-[10px] text-gray-400"></span>
+            </div>
+            <div class="flex gap-2 mb-2">
+                <label class="flex-1 text-center bg-indigo-50 text-indigo-700 border-2 border-indigo-200 py-3 rounded-lg text-xs font-bold cursor-pointer hover:bg-indigo-100 transition">
+                    📁 ファイルから選択
+                    <input type="file" accept="image/*" multiple class="hidden" onchange="handleImageSelect(event)">
+                </label>
+                <label class="flex-1 text-center bg-indigo-50 text-indigo-700 border-2 border-indigo-200 py-3 rounded-lg text-xs font-bold cursor-pointer hover:bg-indigo-100 transition">
+                    📸 カメラで撮影
+                    <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelect(event)">
+                </label>
+            </div>
+            <div id="imgPreview" class="img-preview-grid"></div>
+            <div id="imgSizeBar" style="display:none;">
+                <div class="flex justify-between text-[10px] text-gray-400 mt-2"><span>容量</span><span id="imgSizeText">0 / 800 KB</span></div>
+                <div style="background:#e2e8f0;border-radius:2px;height:4px;"><div id="imgSizeBarInner" class="img-size-bar" style="background:#3b82f6;width:0%;height:100%;"></div></div>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-2">※ 画像は自動圧縮されます（1枚あたり最大200KB・合計800KBまで）</p>
+        </div>
+
         <button id="saveBtn" onclick="saveEntry()" class="w-full mt-4 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all">この案件を登録</button>
     </section>
 
@@ -278,7 +311,7 @@ if (firebaseReady) {
 }
 
 // ========== データ管理 ==========
-let db = {}, currentEntries = [], currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ","給湯器"], editingId = null, isSkipMode = false;
+let db = {}, currentEntries = [], currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ","給湯器"], editingId = null, isSkipMode = false, currentImages = [];
 
 function getLocalDB() { return JSON.parse(localStorage.getItem('tohoDailyReportDB')) || {}; }
 function setLocalDB(d) { localStorage.setItem('tohoDailyReportDB', JSON.stringify(d)); }
@@ -305,7 +338,9 @@ async function loadData(dateKey) {
     document.getElementById('dailyNotes').value = data.notes || "";
     editingId = null;
     document.getElementById('saveBtn').innerText = "この案件を登録";
+    currentImages = [];
     renderEntries(); renderAppliances();
+    try { renderImagePreview(); } catch(e) {}
 }
 
 function updateSync(s) {
@@ -361,6 +396,107 @@ function renderAppliances() { document.getElementById('applianceList').innerHTML
 function addAppliance() { const v=document.getElementById('applianceSelect').value; if(!currentAppliances.includes(v)){currentAppliances.push(v);renderAppliances();} }
 function removeAppliance(i) { currentAppliances.splice(i,1); renderAppliances(); }
 
+// ========== 画像添付 ==========
+const IMG_MAX_SIZE = 200 * 1024; // 1枚200KB
+const IMG_TOTAL_MAX = 800 * 1024; // 合計800KB
+const IMG_MAX_DIM = 1200; // 長辺1200px
+
+function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > h && w > IMG_MAX_DIM) { h = Math.round(h * IMG_MAX_DIM / w); w = IMG_MAX_DIM; }
+                else if (h > IMG_MAX_DIM) { w = Math.round(w * IMG_MAX_DIM / h); h = IMG_MAX_DIM; }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                // 品質を調整して200KB以下に
+                let quality = 0.7;
+                let dataUrl = canvas.toDataURL('image/jpeg', quality);
+                while (dataUrl.length * 0.75 > IMG_MAX_SIZE && quality > 0.2) {
+                    quality -= 0.1;
+                    dataUrl = canvas.toDataURL('image/jpeg', quality);
+                }
+                resolve(dataUrl);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function getImagesTotalSize() {
+    return currentImages.reduce((sum, d) => sum + Math.round(d.length * 0.75), 0);
+}
+
+function updateImageSizeBar() {
+    const total = getImagesTotalSize();
+    const pct = Math.min(100, Math.round(total / IMG_TOTAL_MAX * 100));
+    const bar = document.getElementById('imgSizeBarInner');
+    const text = document.getElementById('imgSizeText');
+    const container = document.getElementById('imgSizeBar');
+    const info = document.getElementById('imgSizeInfo');
+    if (currentImages.length > 0) {
+        container.style.display = 'block';
+        bar.style.width = pct + '%';
+        bar.style.background = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#3b82f6';
+        text.textContent = `${Math.round(total/1024)} / ${Math.round(IMG_TOTAL_MAX/1024)} KB`;
+        info.textContent = `${currentImages.length}枚添付中`;
+    } else {
+        container.style.display = 'none';
+        info.textContent = '';
+    }
+}
+
+async function handleImageSelect(event) {
+    const files = Array.from(event.target.files);
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;
+        try {
+            const dataUrl = await compressImage(file);
+            const newTotal = getImagesTotalSize() + Math.round(dataUrl.length * 0.75);
+            if (newTotal > IMG_TOTAL_MAX) {
+                showFlash('⚠️ 容量上限に達しました'); break;
+            }
+            currentImages.push(dataUrl);
+        } catch (e) { console.info('画像圧縮エラー:', e); }
+    }
+    renderImagePreview();
+    event.target.value = '';
+}
+
+function removeImage(idx) {
+    currentImages.splice(idx, 1);
+    renderImagePreview();
+}
+
+function renderImagePreview() {
+    const c = document.getElementById('imgPreview');
+    c.innerHTML = currentImages.map((d, i) => `
+        <div class="img-preview-item">
+            <img src="${d}" onclick="showImageModal('${d.substring(0,50)}',${i},'preview')">
+            <button class="img-remove" onclick="removeImage(${i})">×</button>
+        </div>
+    `).join('');
+    updateImageSizeBar();
+}
+
+function showImageModal(src, idx, source) {
+    const data = source === 'preview' ? currentImages[idx] :
+                 source === 'entry' ? currentEntries[idx]?.images?.[parseInt(src)] : src;
+    if (!data) return;
+    const modal = document.createElement('div');
+    modal.className = 'img-modal';
+    modal.innerHTML = `<img src="${data}">`;
+    modal.onclick = () => modal.remove();
+    document.body.appendChild(modal);
+}
+
 // ========== 案件CRUD ==========
 function saveEntry() {
     const btn = document.getElementById('saveBtn'); btn.disabled = true;
@@ -375,12 +511,14 @@ function saveEntry() {
         appliances: isSkipMode?[]:[...currentAppliances],
         plan: isSkipMode?'':document.getElementById('plan').value,
         problem: document.getElementById('problem').value,
-        feedback: document.getElementById('feedback').value
+        feedback: document.getElementById('feedback').value,
+        images: [...currentImages]
     };
     if(editingId){ const idx=currentEntries.findIndex(e=>e.id===editingId); if(idx!==-1)currentEntries[idx]=entry; editingId=null; btn.innerText="この案件を登録"; }
     else { currentEntries.push(entry); }
     saveToStorage(); renderEntries();
     document.getElementById('problem').value=''; document.getElementById('feedback').value='';
+    currentImages = []; renderImagePreview();
     setTimeout(()=>{btn.disabled=false;},500);
 }
 function editEntry(id) {
@@ -395,6 +533,7 @@ function editEntry(id) {
         currentAppliances=[...(e.appliances||[])]; renderAppliances();
     }
     document.getElementById('problem').value=e.problem; document.getElementById('feedback').value=e.feedback;
+    currentImages = [...(e.images||[])]; renderImagePreview();
     document.getElementById('saveBtn').innerText="案件を更新する"; window.scrollTo({top:0,behavior:'smooth'});
 }
 function deleteEntry(id) { if(confirm("削除しますか？")){currentEntries=currentEntries.filter(e=>e.id!==id);saveToStorage();renderEntries();} }
@@ -414,6 +553,7 @@ function renderEntries() {
                 <div class="problem-box"><strong>問題:</strong> ${e.problem||'なし'}</div>
                 <div class="feedback-box"><strong>FB:</strong> ${e.feedback||'なし'}</div>
             </div>
+            ${(e.images&&e.images.length)?`<div class="flex flex-wrap gap-2 mt-3">${e.images.map((img,j)=>`<img src="${img}" class="img-entry" onclick="showImageModal('${j}',${i},'entry')">`).join('')}</div>`:''}
             <div class="mt-4 flex gap-2 justify-end">
                 <button onclick="editEntry(${e.id})" class="text-[10px] text-blue-500 border border-blue-100 px-3 py-1 rounded-lg">編集</button>
                 <button onclick="deleteEntry(${e.id})" class="text-[10px] text-red-300 border border-red-50 px-3 py-1 rounded-lg">削除</button>
@@ -468,7 +608,9 @@ function downloadPDF() {
         h+=`<div style="font-weight:800;color:#1d4ed8;font-size:14px;margin-bottom:6px;">${i+1}件目${e.skipped?' : ⚡省略登録':` : ${e.area} ${e.areaDetail}`}</div>`;
         if(!e.skipped) h+=`<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">時間:${e.time}頃 ｜ 住居:${e.housing} ｜ ${e.type} ｜ 圧力:${e.pressure}<br>器具:${(e.appliances||[]).join('・')} ｜ プラン:${e.plan}</div>`;
         h+=`<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:8px;border-radius:4px;margin-bottom:6px;"><strong style="color:#dc2626;">問題:</strong> ${e.problem||'なし'}</div>`;
-        h+=`<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:8px;border-radius:4px;"><strong style="color:#16a34a;">FB:</strong> ${e.feedback||'なし'}</div></div>`;
+        h+=`<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:8px;border-radius:4px;"><strong style="color:#16a34a;">FB:</strong> ${e.feedback||'なし'}</div>`;
+        if(e.images&&e.images.length){ h+=`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${e.images.map(img=>`<img src="${img}" style="max-width:150px;border-radius:4px;border:1px solid #e2e8f0;">`).join('')}</div>`; }
+        h+=`</div>`;
     });
     h+=`<div style="margin-top:16px;padding:14px;background:#eff6ff;border:2px solid #3b82f6;border-radius:8px;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px;">📝 総括</div><div style="white-space:pre-wrap;">${document.getElementById('dailySummary').value||'なし'}</div></div>`;
     h+=`<div style="margin-top:10px;padding:14px;background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;"><div style="font-weight:800;color:#16a34a;margin-bottom:6px;">📎 備考</div><div style="white-space:pre-wrap;">${document.getElementById('dailyNotes').value||'なし'}</div></div>`;
