@@ -5,10 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>毎日の作業日報</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <style>
         body { background-color: #f8fafc; color: #1e293b; font-family: sans-serif; }
-        .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s; }
-        .sticky-bottom { position: sticky; bottom: 0; background: white; border-top: 3px solid #3b82f6; padding: 16px; box-shadow: 0 -10px 15px -3px rgba(0,0,0,0.1); z-index: 50; }
+        .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .tag { display: inline-flex; align-items: center; background: #eff6ff; color: #1d4ed8; padding: 4px 10px; border-radius: 20px; margin: 2px; border: 1px solid #dbeafe; font-size: 0.75rem; font-weight: 600; }
         .tag-remove { margin-left: 6px; cursor: pointer; color: #ef4444; }
         .problem-box { background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 8px; border-radius: 4px; }
@@ -16,19 +19,51 @@
         .mic-btn { cursor: pointer; transition: transform 0.2s; }
         .mic-btn:active { transform: scale(0.9); }
         .mic-active { color: #ef4444; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        @keyframes pulse { 0%{opacity:1}50%{opacity:0.5}100%{opacity:1} }
+        .skip-fields { display: none; }
+        .skip-fields.show { display: block; }
+        .summary-card { border-radius: 12px; padding: 16px; }
+        .login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1e3a5f 0%, #3b82f6 100%); }
+        .sync-indicator { font-size: 10px; padding: 2px 8px; border-radius: 10px; }
+        .sync-ok { background: #dcfce7; color: #166534; }
+        .sync-offline { background: #fef3c7; color: #92400e; }
+        .export-btn { font-size: 11px; font-weight: 700; padding: 8px 12px; border-radius: 8px; transition: all 0.2s; }
+        .export-btn:active { transform: scale(0.95); }
+        .flash-msg { position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:white;padding:10px 24px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999; }
     </style>
 </head>
-<body class="pb-80">
+<body class="pb-4">
 
+<!-- ログイン画面 -->
+<div id="loginScreen" class="login-screen">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
+        <div class="text-4xl mb-4">📋</div>
+        <h1 class="text-xl font-black text-blue-800 mb-2">毎日の作業日報</h1>
+        <p class="text-xs text-gray-400 mb-6">Googleアカウントでログインしてデータを同期</p>
+        <button onclick="googleLogin()" class="w-full bg-white border-2 border-gray-200 text-gray-700 font-bold py-3 px-6 rounded-xl hover:bg-gray-50 transition flex items-center justify-center gap-3">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.9 33.5 29.4 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.2-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.5 18.8 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.4 35.2 26.8 36 24 36c-5.4 0-9.9-3.5-11.3-8.5l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.7 39.5 44 34 44 24c0-1.3-.2-2.6-.4-3.9z"/></svg>
+            Googleでログイン
+        </button>
+        <button onclick="useOffline()" class="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 py-2">オフラインで使う（同期なし）</button>
+    </div>
+</div>
+
+<!-- メインアプリ -->
+<div id="mainApp" class="hidden">
 <div class="max-w-3xl mx-auto p-4">
+
     <header class="flex justify-between items-center mb-6 py-2">
-        <h1 class="text-xl font-black text-blue-800 tracking-tight italic">毎日の作業日報</h1>
+        <div>
+            <h1 class="text-xl font-black text-blue-800 tracking-tight italic">毎日の作業日報</h1>
+            <div class="flex items-center gap-2 mt-1">
+                <span id="userDisplay" class="text-[10px] text-gray-400"></span>
+                <span id="syncStatus" class="sync-indicator sync-offline">オフライン</span>
+            </div>
+        </div>
         <div class="flex gap-2 text-[10px] font-bold">
             <button onclick="exportData()" class="bg-gray-100 px-3 py-2 rounded-lg">📤 出力</button>
-            <label class="bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">
-                📥 取込 <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)">
-            </label>
+            <label class="bg-gray-100 px-3 py-2 rounded-lg cursor-pointer">📥 取込 <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)"></label>
+            <button onclick="logoutUser()" id="logoutBtn" class="bg-red-50 text-red-400 px-3 py-2 rounded-lg hidden">ログアウト</button>
         </div>
     </header>
 
@@ -41,75 +76,81 @@
         <button onclick="changeDate(1)" class="p-2 hover:bg-gray-100 rounded-full text-xl">▶</button>
     </div>
 
+    <!-- 入力フォーム -->
     <section class="card border-t-8 border-t-blue-500">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1">📍 ① 地域</label>
-                <div class="flex gap-1">
-                    <select id="area" class="border p-2 rounded-lg w-1/3 text-sm">
-                        <option value="中区" selected>中区</option>
-                        <option value="千種区">千種区</option><option value="東区">東区</option><option value="北区">北区</option>
-                        <option value="西区">西区</option><option value="中村区">中村区</option><option value="昭和区">昭和区</option>
-                        <option value="瑞穂区">瑞穂区</option><option value="熱田区">熱田区</option><option value="中川区">中川区</option>
-                        <option value="港区">港区</option><option value="南区">南区</option><option value="守山区">守山区</option>
-                        <option value="緑区">緑区</option><option value="名東区">名東区</option><option value="天白区">天白区</option>
-                        <option value="名古屋市外">名古屋市外</option>
+        <div class="flex items-center justify-between mb-4">
+            <span class="text-xs font-bold text-gray-500">📝 案件入力</span>
+            <button onclick="toggleSkip()" id="skipToggle" class="text-xs font-bold px-4 py-2 rounded-lg border-2 transition-all bg-amber-50 text-amber-700 border-amber-200">⚡ ①〜⑦を省略</button>
+        </div>
+
+        <div id="detailFields" class="skip-fields show">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">📍 ① 地域</label>
+                    <div class="flex gap-1">
+                        <select id="area" class="border p-2 rounded-lg w-1/3 text-sm">
+                            <option value="中区" selected>中区</option><option value="千種区">千種区</option><option value="東区">東区</option><option value="北区">北区</option>
+                            <option value="西区">西区</option><option value="中村区">中村区</option><option value="昭和区">昭和区</option>
+                            <option value="瑞穂区">瑞穂区</option><option value="熱田区">熱田区</option><option value="中川区">中川区</option>
+                            <option value="港区">港区</option><option value="南区">南区</option><option value="守山区">守山区</option>
+                            <option value="緑区">緑区</option><option value="名東区">名東区</option><option value="天白区">天白区</option>
+                            <option value="名古屋市外">名古屋市外</option>
+                        </select>
+                        <input type="text" id="areaDetail" placeholder="地名を入力" class="border p-2 rounded-lg flex-1 text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">⏰ ② 時間</label>
+                    <div class="flex items-center gap-2">
+                        <select id="hour" class="border p-2 rounded-lg text-sm w-full"></select>
+                        <span class="font-bold">:</span>
+                        <select id="minute" class="border p-2 rounded-lg text-sm w-full"></select>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🏠 ③ 住居</label>
+                    <select id="housing" class="border p-2 rounded-lg w-full text-xs">
+                        <option value="マンション">マンション</option><option value="マンション（AL）" selected>マンション（AL）</option>
+                        <option value="アパート（AL）">アパート（AL）</option><option value="アパート">アパート</option>
+                        <option value="戸建て">戸建て</option><option value="その他">その他</option>
                     </select>
-                    <input type="text" id="areaDetail" placeholder="地名を入力" class="border p-2 rounded-lg flex-1 text-sm">
+                </div>
+                <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🔄 ④ 区分</label>
+                    <select id="type" class="border p-2 rounded-lg w-full text-xs">
+                        <option value="開栓" selected>開栓</option><option value="開栓（他小売）">開栓（他小売）</option>
+                        <option value="閉栓">閉栓</option><option value="入居前試点火">入居前試点火</option>
+                        <option value="開栓中開栓">開栓中開栓</option><option value="不特定開栓">不特定開栓</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+                <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🛡️ ⑤ 圧力</label>
+                    <select id="pressure" class="border p-2 rounded-lg w-full text-xs">
+                        <option value="検圧口（給）" selected>検圧口（給）</option><option value="検圧口">検圧口</option>
+                        <option value="コンロ前">コンロ前</option><option value="動止確認">動止確認</option>
+                    </select>
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1">⏰ ② 時間</label>
-                <div class="flex items-center gap-2">
-                    <select id="hour" class="border p-2 rounded-lg text-sm w-full"></select>
-                    <span class="font-bold">:</span>
-                    <select id="minute" class="border p-2 rounded-lg text-sm w-full"></select>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-3 gap-2 mb-4">
-            <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🏠 ③ 住居</label>
-                <select id="housing" class="border p-2 rounded-lg w-full text-xs">
-                    <option value="マンション">マンション</option><option value="マンション（AL）" selected>マンション（AL）</option>
-                    <option value="アパート（AL）">アパート（AL）</option><option value="アパート">アパート</option>
-                    <option value="戸建て">戸建て</option><option value="その他">その他</option>
+            <div class="mb-4 text-xs font-bold text-gray-500">🔥 ⑥ ガス器具</div>
+            <div id="applianceList" class="flex flex-wrap gap-1 mb-2"></div>
+            <div class="flex gap-2 mb-4">
+                <select id="applianceSelect" class="border p-2 rounded-lg text-xs flex-1">
+                    <option value="ﾋﾞﾙﾄｲﾝｺﾝﾛ">ﾋﾞﾙﾄｲﾝｺﾝﾛ</option><option value="給湯器">給湯器</option>
+                    <option value="CH熱源機">CH熱源機</option><option value="ｶﾞｽﾃｰﾌﾞﾙ">ｶﾞｽﾃｰﾌﾞﾙ</option>
+                    <option value="元止湯沸器">元止湯沸器</option><option value="温水暖房熱源器（CH）">温水暖房熱源器（CH）</option>
                 </select>
+                <button onclick="addAppliance()" class="bg-blue-100 text-blue-700 px-4 py-1 rounded-lg text-xs font-bold">追加</button>
             </div>
-            <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🔄 ④ 区分</label>
-                <select id="type" class="border p-2 rounded-lg w-full text-xs">
-                    <option value="開栓" selected>開栓</option><option value="開栓（他小売）">開栓（他小売）</option>
-                    <option value="閉栓">閉栓</option><option value="入居前試点火">入居前試点火</option>
-                    <option value="開栓中開栓">開栓中開栓</option><option value="不特定開栓">不特定開栓</option>
-                    <option value="その他">その他</option>
-                </select>
-            </div>
-            <div><label class="block text-[10px] font-bold text-gray-400 mb-1">🛡️ ⑤ 圧力</label>
-                <select id="pressure" class="border p-2 rounded-lg w-full text-xs">
-                    <option value="検圧口（給）" selected>検圧口（給）</option><option value="検圧口">検圧口</option>
-                    <option value="コンロ前">コンロ前</option><option value="動止確認">動止確認</option>
+            <div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-1">📋 ⑦ プラン</label>
+                <select id="plan" class="border p-2 rounded-lg w-full text-sm">
+                    <option value="がすてき" selected>がすてき</option><option value="選択約款(払込票）">選択約款(払込票）</option>
+                    <option value="あったかとくとく">あったかとくとく</option><option value="床暖とくとく">床暖とくとく</option>
+                    <option value="なし（他小売）">なし（他小売）</option><option value="その他">その他</option>
                 </select>
             </div>
         </div>
 
-        <div class="mb-4 text-xs font-bold text-gray-500">🔥 ⑥ ガス器具</div>
-        <div id="applianceList" class="flex flex-wrap gap-1 mb-2"></div>
-        <div class="flex gap-2 mb-4">
-            <select id="applianceSelect" class="border p-2 rounded-lg text-xs flex-1">
-                <option value="ﾋﾞﾙﾄｲﾝｺﾝﾛ">ﾋﾞﾙﾄｲﾝｺﾝﾛ</option><option value="給湯器">給湯器</option>
-                <option value="CH熱源機">CH熱源機</option><option value="ｶﾞｽﾃｰﾌﾞﾙ">ｶﾞｽﾃｰﾌﾞﾙ</option>
-                <option value="元止湯沸器">元止湯沸器</option><option value="温水暖房熱源器（CH）">温水暖房熱源器（CH）</option>
-            </select>
-            <button onclick="addAppliance()" class="bg-blue-100 text-blue-700 px-4 py-1 rounded-lg text-xs font-bold">追加</button>
-        </div>
-
-        <div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-1">📋 ⑦ プラン</label>
-            <select id="plan" class="border p-2 rounded-lg w-full text-sm">
-                <option value="がすてき" selected>がすてき</option><option value="選択約款(払込票）">選択約款(払込票）</option>
-                <option value="あったかとくとく">あったかとくとく</option><option value="床暖とくとく">床暖とくとく</option>
-                <option value="なし（他小売）">なし（他小売）</option><option value="その他">その他</option>
-            </select>
-        </div>
+        <div id="skipLabel" class="hidden mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-bold text-center">⚡ ①〜⑦を省略中（⑧⑨のみ入力モード）</div>
 
         <div class="space-y-4 border-t pt-4">
             <div>
@@ -127,258 +168,332 @@
                 <textarea id="feedback" class="border p-3 rounded-lg w-full h-24 text-sm"></textarea>
             </div>
         </div>
-
-        <button id="saveBtn" onclick="saveEntry()" class="w-full mt-4 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all">
-            この案件を登録
-        </button>
+        <button id="saveBtn" onclick="saveEntry()" class="w-full mt-4 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all">この案件を登録</button>
     </section>
 
-    <div id="entriesContainer" class="space-y-4 mt-8 pb-10"></div>
+    <!-- 登録済み一覧 -->
+    <div id="entriesContainer" class="space-y-4 mt-8"></div>
+
+    <!-- 総括・備考 -->
+    <div class="mt-8 space-y-4">
+        <div class="summary-card" style="background:#eff6ff;border:2px solid #3b82f6;">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-sm font-bold text-blue-700">📝 総括</label>
+                <button onclick="startVoice('dailySummary')" class="mic-btn text-blue-400 text-xs" id="mic-dailySummary">🎤 音声入力</button>
+            </div>
+            <textarea id="dailySummary" oninput="saveToStorage()" class="border-2 border-blue-200 p-3 rounded-lg w-full text-sm focus:border-blue-400 outline-none" rows="4" placeholder="今日の総括を入力..."></textarea>
+        </div>
+        <div class="summary-card" style="background:#f0fdf4;border:2px solid #22c55e;">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-sm font-bold text-green-700">📎 備考</label>
+                <button onclick="startVoice('dailyNotes')" class="mic-btn text-green-400 text-xs" id="mic-dailyNotes">🎤 音声入力</button>
+            </div>
+            <textarea id="dailyNotes" oninput="saveToStorage()" class="border-2 border-green-200 p-3 rounded-lg w-full text-sm focus:border-green-400 outline-none" rows="4" placeholder="備考を入力..."></textarea>
+        </div>
+
+        <button onclick="saveSummaryExplicit()" class="export-btn bg-blue-600 text-white w-full py-3 rounded-xl text-sm">💾 総括・備考を保存</button>
+        <div class="grid grid-cols-3 gap-2">
+            <button onclick="downloadPDF()" class="export-btn bg-red-500 text-white">📄 PDF保存</button>
+            <button onclick="downloadCSV()" class="export-btn bg-green-600 text-white">📊 CSV保存</button>
+            <button onclick="copyDailyText()" class="export-btn bg-purple-600 text-white">📋 テキストコピー</button>
+        </div>
+        <button onclick="copyWeeklyText()" class="export-btn bg-orange-500 text-white w-full">📅 週間まとめコピー</button>
+    </div>
+    <div class="h-20"></div>
+</div>
 </div>
 
-<div class="sticky-bottom max-w-3xl mx-auto rounded-t-2xl">
-    <div class="grid grid-cols-2 gap-3 mb-4">
-        <div>
-            <div class="flex justify-between items-center px-1"><label class="text-[10px] font-bold text-gray-400">総括</label><button onclick="startVoice('dailySummary')" class="text-[10px] text-blue-400">🎤入力</button></div>
-            <input type="text" id="dailySummary" oninput="saveToLocalStorage()" class="border p-2 rounded-lg w-full text-sm">
-        </div>
-        <div>
-            <div class="flex justify-between items-center px-1"><label class="text-[10px] font-bold text-gray-400">備考</label><button onclick="startVoice('dailyNotes')" class="text-[10px] text-blue-400">🎤入力</button></div>
-            <input type="text" id="dailyNotes" oninput="saveToLocalStorage()" class="border p-2 rounded-lg w-full text-sm">
-        </div>
-    </div>
-    <div class="flex gap-2">
-        <button onclick="copyDailyText()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-black">日報コピー</button>
-        <button onclick="copyWeeklyText()" class="flex-1 bg-orange-500 text-white py-3 rounded-xl font-bold text-xs">週間まとめ</button>
-    </div>
-</div>
+<div id="pdfContent" style="position:absolute;left:-9999px;top:0;width:720px;font-family:sans-serif;"></div>
 
 <script>
-    let db = JSON.parse(localStorage.getItem('tohoDailyReportDB')) || {};
-    let currentEntries = [];
-    let currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ", "給湯器"];
-    let editingId = null;
+// ========== Firebase設定 ==========
+// ※ ご自身のFirebaseプロジェクト設定に置き換えてください
+// 手順:
+//   1. https://console.firebase.google.com/ でプロジェクト作成
+//   2. Authentication → ログイン方法 → Google を有効化
+//   3. Firestore Database を作成（テストモードで開始）
+//   4. プロジェクト設定 → ウェブアプリ追加 → 下記configを置換
+//   5. Firestoreルール:
+//      rules_version = '2';
+//      service cloud.firestore {
+//        match /databases/{database}/documents {
+//          match /users/{userId}/{document=**} {
+//            allow read, write: if request.auth != null && request.auth.uid == userId;
+//          }
+//        }
+//      }
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
 
-    // --- 音声入力機能 ---
-    function startVoice(targetId) {
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'ja-JP';
-        const btn = document.getElementById('mic-' + targetId) || null;
-        if(btn) btn.classList.add('mic-active');
+let firebaseReady = false, authUser = null, firestoreDb = null, isOnlineMode = false;
 
-        recognition.onresult = (event) => {
-            const text = event.results[0][0].transcript;
-            const input = document.getElementById(targetId);
-            input.value += (input.value ? ' ' : '') + text;
-            saveToLocalStorage();
-        };
-
-        recognition.onend = () => { if(btn) btn.classList.remove('mic-active'); };
-        recognition.start();
+try {
+    if (firebaseConfig.apiKey !== 'YOUR_API_KEY') {
+        firebase.initializeApp(firebaseConfig);
+        firestoreDb = firebase.firestore();
+        firestoreDb.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+        firebaseReady = true;
     }
+} catch(e) { console.info('Firebase初期化スキップ:', e.message); }
 
-    // --- 基本機能 ---
-    window.onload = () => {
-        initTimeSelects();
-        setCurrentDate(new Date());
+// ========== 認証 ==========
+function googleLogin() {
+    if (!firebaseReady) { alert('Firebase設定が未完了です。\nコード内のfirebaseConfigをご自身のプロジェクト情報に置き換えてください。'); return; }
+    firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => alert('ログイン失敗: ' + e.message));
+}
+function useOffline() {
+    isOnlineMode = false;
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('mainApp').classList.remove('hidden');
+    document.getElementById('syncStatus').textContent = 'オフライン';
+    document.getElementById('syncStatus').className = 'sync-indicator sync-offline';
+    document.getElementById('userDisplay').textContent = 'ローカルモード';
+    initApp();
+}
+function logoutUser() {
+    if (firebaseReady) firebase.auth().signOut();
+    isOnlineMode = false; authUser = null;
+    document.getElementById('mainApp').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+}
+if (firebaseReady) {
+    firebase.auth().onAuthStateChanged(user => {
+        if (user) {
+            authUser = user; isOnlineMode = true;
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('logoutBtn').classList.remove('hidden');
+            document.getElementById('userDisplay').textContent = user.displayName || user.email;
+            document.getElementById('syncStatus').textContent = '✓ 同期中';
+            document.getElementById('syncStatus').className = 'sync-indicator sync-ok';
+            initApp();
+        }
+    });
+}
+
+// ========== データ管理 ==========
+let db = {}, currentEntries = [], currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ","給湯器"], editingId = null, isSkipMode = false;
+
+function getLocalDB() { return JSON.parse(localStorage.getItem('tohoDailyReportDB')) || {}; }
+function setLocalDB(d) { localStorage.setItem('tohoDailyReportDB', JSON.stringify(d)); }
+function getDocRef(dateKey) {
+    if (!isOnlineMode || !authUser) return null;
+    return firestoreDb.collection('users').doc(authUser.uid).collection('reports').doc(dateKey);
+}
+
+async function saveToStorage() {
+    const dateKey = document.getElementById('datePicker').value;
+    const data = { entries: currentEntries, summary: document.getElementById('dailySummary').value, notes: document.getElementById('dailyNotes').value, updatedAt: Date.now() };
+    db[dateKey] = data; setLocalDB(db);
+    const ref = getDocRef(dateKey);
+    if (ref) { try { await ref.set(data); updateSync('ok'); } catch(e) { updateSync('err'); } }
+}
+
+async function loadData(dateKey) {
+    let data = null;
+    const ref = getDocRef(dateKey);
+    if (ref) { try { const doc = await ref.get(); if (doc.exists) { data = doc.data(); db[dateKey] = data; setLocalDB(db); } } catch(e) {} }
+    if (!data) data = db[dateKey] || {entries:[], summary:"", notes:""};
+    currentEntries = data.entries ? [...data.entries] : [];
+    document.getElementById('dailySummary').value = data.summary || "";
+    document.getElementById('dailyNotes').value = data.notes || "";
+    editingId = null;
+    document.getElementById('saveBtn').innerText = "この案件を登録";
+    renderEntries(); renderAppliances();
+}
+
+function updateSync(s) {
+    const el = document.getElementById('syncStatus');
+    if (s==='ok') { el.textContent='✓ 同期済み'; el.className='sync-indicator sync-ok'; }
+    else { el.textContent='同期エラー'; el.className='sync-indicator sync-offline'; }
+}
+
+// ========== 音声入力 ==========
+function startVoice(targetId) {
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'ja-JP';
+    const btn = document.getElementById('mic-'+targetId)||null;
+    if(btn) btn.classList.add('mic-active');
+    recognition.onresult = (ev) => { const t = ev.results[0][0].transcript; const inp = document.getElementById(targetId); inp.value += (inp.value?' ':'') + t; saveToStorage(); };
+    recognition.onend = () => { if(btn) btn.classList.remove('mic-active'); };
+    recognition.start();
+}
+
+// ========== 初期化 ==========
+function initApp() { db = getLocalDB(); initTimeSelects(); setCurrentDate(new Date()); }
+function initTimeSelects() {
+    const hS = document.getElementById('hour');
+    if (hS.options.length > 0) return;
+    for(let i=9;i<=17;i++) hS.add(new Option(i,i,i===10,i===10));
+    const mS = document.getElementById('minute');
+    for(let i=0;i<60;i+=5){ let v=i.toString().padStart(2,'0'); mS.add(new Option(v,v)); }
+}
+function setCurrentDate(date) {
+    const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    document.getElementById('datePicker').value = key;
+    document.getElementById('dayOfWeek').innerText = `${['日','月','火','水','木','金','土'][date.getDay()]}曜日`;
+    loadData(key);
+}
+function changeDate(diff) { const c = new Date(document.getElementById('datePicker').value); c.setDate(c.getDate()+diff); setCurrentDate(c); }
+function jumpToDate() { setCurrentDate(new Date(document.getElementById('datePicker').value)); }
+
+// ========== 省略ボタン ==========
+function toggleSkip() {
+    isSkipMode = !isSkipMode;
+    const f = document.getElementById('detailFields'), l = document.getElementById('skipLabel'), b = document.getElementById('skipToggle');
+    if (isSkipMode) {
+        f.classList.remove('show'); l.classList.remove('hidden');
+        b.textContent = '📝 ①〜⑦を入力する'; b.className = 'text-xs font-bold px-4 py-2 rounded-lg border-2 transition-all bg-blue-50 text-blue-700 border-blue-200';
+    } else {
+        f.classList.add('show'); l.classList.add('hidden');
+        b.textContent = '⚡ ①〜⑦を省略'; b.className = 'text-xs font-bold px-4 py-2 rounded-lg border-2 transition-all bg-amber-50 text-amber-700 border-amber-200';
+    }
+}
+
+// ========== ガス器具 ==========
+function renderAppliances() { document.getElementById('applianceList').innerHTML = currentAppliances.map((a,i)=>`<span class="tag">${a}<span class="tag-remove" onclick="removeAppliance(${i})">×</span></span>`).join(''); }
+function addAppliance() { const v=document.getElementById('applianceSelect').value; if(!currentAppliances.includes(v)){currentAppliances.push(v);renderAppliances();} }
+function removeAppliance(i) { currentAppliances.splice(i,1); renderAppliances(); }
+
+// ========== 案件CRUD ==========
+function saveEntry() {
+    const btn = document.getElementById('saveBtn'); btn.disabled = true;
+    const entry = {
+        id: editingId || Date.now(), skipped: isSkipMode,
+        area: isSkipMode?'':document.getElementById('area').value,
+        areaDetail: isSkipMode?'':document.getElementById('areaDetail').value,
+        time: isSkipMode?'':`${document.getElementById('hour').value}:${document.getElementById('minute').value}`,
+        housing: isSkipMode?'':document.getElementById('housing').value,
+        type: isSkipMode?'':document.getElementById('type').value,
+        pressure: isSkipMode?'':document.getElementById('pressure').value,
+        appliances: isSkipMode?[]:[...currentAppliances],
+        plan: isSkipMode?'':document.getElementById('plan').value,
+        problem: document.getElementById('problem').value,
+        feedback: document.getElementById('feedback').value
     };
-
-    function initTimeSelects() {
-        const hS = document.getElementById('hour');
-        for(let i=9; i<=17; i++) hS.add(new Option(i, i, i===10, i===10));
-        const mS = document.getElementById('minute');
-        for(let i=0; i<60; i+=5) {
-            let val = i.toString().padStart(2, '0');
-            mS.add(new Option(val, val));
-        }
+    if(editingId){ const idx=currentEntries.findIndex(e=>e.id===editingId); if(idx!==-1)currentEntries[idx]=entry; editingId=null; btn.innerText="この案件を登録"; }
+    else { currentEntries.push(entry); }
+    saveToStorage(); renderEntries();
+    document.getElementById('problem').value=''; document.getElementById('feedback').value='';
+    setTimeout(()=>{btn.disabled=false;},500);
+}
+function editEntry(id) {
+    const e=currentEntries.find(x=>x.id===id); if(!e)return; editingId=id;
+    if(e.skipped){ if(!isSkipMode)toggleSkip(); }
+    else {
+        if(isSkipMode)toggleSkip();
+        document.getElementById('area').value=e.area; document.getElementById('areaDetail').value=e.areaDetail;
+        if(e.time){const[h,m]=e.time.split(':');document.getElementById('hour').value=h;document.getElementById('minute').value=m;}
+        document.getElementById('housing').value=e.housing; document.getElementById('type').value=e.type;
+        document.getElementById('pressure').value=e.pressure; document.getElementById('plan').value=e.plan;
+        currentAppliances=[...(e.appliances||[])]; renderAppliances();
     }
+    document.getElementById('problem').value=e.problem; document.getElementById('feedback').value=e.feedback;
+    document.getElementById('saveBtn').innerText="案件を更新する"; window.scrollTo({top:0,behavior:'smooth'});
+}
+function deleteEntry(id) { if(confirm("削除しますか？")){currentEntries=currentEntries.filter(e=>e.id!==id);saveToStorage();renderEntries();} }
 
-    function setCurrentDate(date) {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        const key = `${y}-${m}-${d}`;
-        document.getElementById('datePicker').value = key;
-        document.getElementById('dayOfWeek').innerText = `${['日','月','火','水','木','金','土'][date.getDay()]}曜日`;
-        loadData(key);
-    }
-
-    function changeDate(diff) {
-        const current = new Date(document.getElementById('datePicker').value);
-        current.setDate(current.getDate() + diff);
-        setCurrentDate(current);
-    }
-
-    function jumpToDate() { setCurrentDate(new Date(document.getElementById('datePicker').value)); }
-
-    function loadData(dateKey) {
-        const data = db[dateKey] || { entries: [], summary: "", notes: "" };
-        currentEntries = data.entries ? [...data.entries] : [];
-        document.getElementById('dailySummary').value = data.summary || "";
-        document.getElementById('dailyNotes').value = data.notes || "";
-        editingId = null;
-        renderEntries();
-        renderAppliances();
-    }
-
-    function saveToLocalStorage() {
-        const dateKey = document.getElementById('datePicker').value;
-        db[dateKey] = {
-            entries: currentEntries,
-            summary: document.getElementById('dailySummary').value,
-            notes: document.getElementById('dailyNotes').value
-        };
-        localStorage.setItem('tohoDailyReportDB', JSON.stringify(db));
-    }
-
-    function renderAppliances() {
-        const cont = document.getElementById('applianceList');
-        cont.innerHTML = currentAppliances.map((a, i) => `
-            <span class="tag">${a}<span class="tag-remove" onclick="removeAppliance(${i})">×</span></span>
-        `).join('');
-    }
-
-    function addAppliance() {
-        const val = document.getElementById('applianceSelect').value;
-        if(!currentAppliances.includes(val)) {
-            currentAppliances.push(val);
-            renderAppliances();
-        }
-    }
-
-    function removeAppliance(idx) {
-        currentAppliances.splice(idx, 1);
-        renderAppliances();
-    }
-
-    function saveEntry() {
-        const btn = document.getElementById('saveBtn');
-        btn.disabled = true;
-        const entry = {
-            id: editingId || Date.now(),
-            area: document.getElementById('area').value,
-            areaDetail: document.getElementById('areaDetail').value,
-            time: `${document.getElementById('hour').value}:${document.getElementById('minute').value}`,
-            housing: document.getElementById('housing').value,
-            type: document.getElementById('type').value,
-            pressure: document.getElementById('pressure').value,
-            appliances: [...currentAppliances],
-            plan: document.getElementById('plan').value,
-            problem: document.getElementById('problem').value,
-            feedback: document.getElementById('feedback').value
-        };
-
-        if(editingId) {
-            const idx = currentEntries.findIndex(e => e.id === editingId);
-            if(idx !== -1) currentEntries[idx] = entry;
-            editingId = null;
-            btn.innerText = "この案件を登録";
-        } else {
-            currentEntries.push(entry);
-        }
-
-        saveToLocalStorage();
-        renderEntries();
-        document.getElementById('problem').value = '';
-        document.getElementById('feedback').value = '';
-        setTimeout(() => { btn.disabled = false; }, 500);
-    }
-
-    function editEntry(id) {
-        const e = currentEntries.find(ent => ent.id === id);
-        if(!e) return;
-        editingId = id;
-        document.getElementById('area').value = e.area;
-        document.getElementById('areaDetail').value = e.areaDetail;
-        const [h, m] = e.time.split(':');
-        document.getElementById('hour').value = h;
-        document.getElementById('minute').value = m;
-        document.getElementById('housing').value = e.housing;
-        document.getElementById('type').value = e.type;
-        document.getElementById('pressure').value = e.pressure;
-        document.getElementById('plan').value = e.plan;
-        document.getElementById('problem').value = e.problem;
-        document.getElementById('feedback').value = e.feedback;
-        currentAppliances = [...e.appliances];
-        renderAppliances();
-        document.getElementById('saveBtn').innerText = "案件を更新する";
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    function deleteEntry(id) {
-        if(confirm("削除しますか？")) {
-            currentEntries = currentEntries.filter(e => e.id !== id);
-            saveToLocalStorage();
-            renderEntries();
-        }
-    }
-
-    function renderEntries() {
-        const cont = document.getElementById('entriesContainer');
-        cont.innerHTML = `<h2 class="font-bold text-gray-400 text-xs px-2 mb-4">登録済み (${currentEntries.length}件)</h2>` + currentEntries.map((e, i) => `
-            <div class="card relative">
-                <div class="flex justify-between items-start mb-2 font-bold text-blue-800 text-sm">
-                    <span>${i+1}件目: ${e.area} ${e.areaDetail}</span>
-                    <span class="text-xs text-gray-300 font-normal">${e.time}頃</span>
-                </div>
-                <div class="text-[10px] text-gray-400 mb-2 uppercase">${e.housing} / ${e.type} / ${e.pressure}</div>
-                <div class="space-y-2 text-xs">
-                    <div class="problem-box"><strong>問題:</strong> ${e.problem || 'なし'}</div>
-                    <div class="feedback-box"><strong>FB:</strong> ${e.feedback || 'なし'}</div>
-                </div>
-                <div class="mt-4 flex gap-2 justify-end">
-                    <button onclick="editEntry(${e.id})" class="text-[10px] text-blue-500 border border-blue-100 px-3 py-1 rounded-lg">編集</button>
-                    <button onclick="deleteEntry(${e.id})" class="text-[10px] text-red-300 border border-red-50 px-3 py-1 rounded-lg">削除</button>
-                </div>
+// ========== 一覧描画 ==========
+function renderEntries() {
+    const c = document.getElementById('entriesContainer');
+    if(!currentEntries.length){ c.innerHTML='<p class="text-center text-gray-300 text-xs py-8">まだ案件がありません</p>'; return; }
+    c.innerHTML = `<h2 class="font-bold text-gray-400 text-xs px-2 mb-4">登録済み (${currentEntries.length}件)</h2>` +
+    currentEntries.map((e,i)=>{
+        const hdr = e.skipped ? '<span class="text-amber-600">⚡ 省略登録</span>' : `${e.area} ${e.areaDetail}`;
+        const det = e.skipped ? '' : `<div class="text-[10px] text-gray-400 mb-2">${e.housing} / ${e.type} / ${e.pressure}${e.time?' / '+e.time+'頃':''}</div><div class="text-[10px] text-gray-400 mb-2">器具: ${(e.appliances||[]).join('・')||'-'} ｜ プラン: ${e.plan||'-'}</div>`;
+        return `<div class="card relative">
+            <div class="flex justify-between items-start mb-2 font-bold text-blue-800 text-sm"><span>${i+1}件目: ${hdr}</span>${e.time&&!e.skipped?`<span class="text-xs text-gray-300 font-normal">${e.time}頃</span>`:''}</div>
+            ${det}
+            <div class="space-y-2 text-xs">
+                <div class="problem-box"><strong>問題:</strong> ${e.problem||'なし'}</div>
+                <div class="feedback-box"><strong>FB:</strong> ${e.feedback||'なし'}</div>
             </div>
-        `).join('');
-    }
+            <div class="mt-4 flex gap-2 justify-end">
+                <button onclick="editEntry(${e.id})" class="text-[10px] text-blue-500 border border-blue-100 px-3 py-1 rounded-lg">編集</button>
+                <button onclick="deleteEntry(${e.id})" class="text-[10px] text-red-300 border border-red-50 px-3 py-1 rounded-lg">削除</button>
+            </div>
+        </div>`;
+    }).join('');
+}
 
-    function copyDailyText() {
-        const dateKey = document.getElementById('datePicker').value;
-        const d = new Date(dateKey);
-        let text = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${['日','月','火','水','木','金','土'][d.getDay()]}曜日） 主なフィードバック\n\n`;
-        currentEntries.forEach((e, i) => {
-            text += `${i+1}件目：内容「${e.problem || '特記事項なし'}」\n①地域：${e.area} ${e.areaDetail}　②時間：${e.time}頃　③住居：${e.housing}　④${e.type}\n⑤ガス圧力：${e.pressure}　⑥ガス器具：${e.appliances.join('・')}　⑦プラン：${e.plan}\n⑧具体的問題：${e.problem}\n⑨ﾌｨｰﾄﾞﾊﾞｯｸ：${e.feedback}\n\n`;
-        });
-        text += `まとめ：「${document.getElementById('dailySummary').value}」\n備考：「${document.getElementById('dailyNotes').value}」`;
-        navigator.clipboard.writeText(text).then(() => alert("コピーしました！"));
-    }
+// ========== 保存フラッシュ ==========
+function saveSummaryExplicit() { saveToStorage(); showFlash('💾 保存しました'); }
+function showFlash(msg) { const el=document.createElement('div'); el.className='flash-msg'; el.textContent=msg; document.body.appendChild(el); setTimeout(()=>el.remove(),1500); }
 
-    function copyWeeklyText() {
-        let text = "【週間まとめ】\n\n";
-        const current = new Date(document.getElementById('datePicker').value);
-        for(let i=6; i>=0; i--) {
-            const d = new Date(current); d.setDate(d.getDate() - i);
-            const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            const data = db[k];
-            if(data && data.entries && data.entries.length) {
-                text += `${d.getMonth()+1}/${d.getDate()} (${data.entries.length}件)\n`;
-                data.entries.forEach(e => text += `- ${e.areaDetail}: ${e.problem}\n`);
-                text += "\n";
-            }
-        }
-        navigator.clipboard.writeText(text).then(() => alert("週間分をコピーしました！"));
+// ========== テキストコピー ==========
+function buildDailyText() {
+    const dk=document.getElementById('datePicker').value, d=new Date(dk), dn=['日','月','火','水','木','金','土'];
+    let t=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${dn[d.getDay()]}曜日） 主なフィードバック\n\n`;
+    currentEntries.forEach((e,i)=>{
+        if(e.skipped){ t+=`${i+1}件目：（省略登録）\n⑧具体的問題：${e.problem}\n⑨ﾌｨｰﾄﾞﾊﾞｯｸ：${e.feedback}\n\n`; }
+        else { t+=`${i+1}件目：内容「${e.problem||'特記事項なし'}」\n①地域：${e.area} ${e.areaDetail}　②時間：${e.time}頃　③住居：${e.housing}　④${e.type}\n⑤ガス圧力：${e.pressure}　⑥ガス器具：${(e.appliances||[]).join('・')}　⑦プラン：${e.plan}\n⑧具体的問題：${e.problem}\n⑨ﾌｨｰﾄﾞﾊﾞｯｸ：${e.feedback}\n\n`; }
+    });
+    t+=`まとめ：「${document.getElementById('dailySummary').value}」\n備考：「${document.getElementById('dailyNotes').value}」`;
+    return t;
+}
+function copyDailyText() { navigator.clipboard.writeText(buildDailyText()).then(()=>showFlash('📋 コピーしました')); }
+function copyWeeklyText() {
+    let t="【週間まとめ】\n\n"; const cur=new Date(document.getElementById('datePicker').value);
+    for(let i=6;i>=0;i--){ const d=new Date(cur);d.setDate(d.getDate()-i); const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; const data=db[k];
+        if(data&&data.entries&&data.entries.length){ t+=`${d.getMonth()+1}/${d.getDate()} (${data.entries.length}件)\n`; data.entries.forEach(e=>t+=`- ${e.areaDetail||'省略'}: ${e.problem||'-'}\n`); t+="\n"; }
     }
+    navigator.clipboard.writeText(t).then(()=>showFlash('📅 週間分コピーしました'));
+}
 
-    function exportData() {
-        const blob = new Blob([JSON.stringify(db, null, 2)], {type: 'application/json'});
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `report_backup_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-    }
+// ========== CSV出力 ==========
+function downloadCSV() {
+    const dk=document.getElementById('datePicker').value;
+    const hdr='件数,地域,地名,時間,住居,区分,圧力,ガス器具,プラン,具体的問題,フィードバック';
+    const rows=currentEntries.map((e,i)=>[i+1,e.area,e.areaDetail,e.time,e.housing,e.type,e.pressure,(e.appliances||[]).join('・'),e.plan,`"${(e.problem||'').replace(/"/g,'""')}"`,`"${(e.feedback||'').replace(/"/g,'""')}"`].join(','));
+    const csv='\uFEFF'+hdr+'\n'+rows.join('\n')+`\n\n総括,"${(document.getElementById('dailySummary').value||'').replace(/"/g,'""')}"\n備考,"${(document.getElementById('dailyNotes').value||'').replace(/"/g,'""')}"`;
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download=`日報_${dk}.csv`; a.click();
+    showFlash('📊 CSV保存しました');
+}
 
-    function importData(event) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            db = {...db, ...JSON.parse(e.target.result)};
-            localStorage.setItem('tohoDailyReportDB', JSON.stringify(db));
-            loadData(document.getElementById('datePicker').value);
-            alert("インポートしました。");
-        };
-        reader.readAsText(event.target.files[0]);
-    }
+// ========== PDF出力 ==========
+function downloadPDF() {
+    const dk=document.getElementById('datePicker').value, d=new Date(dk), dn=['日','月','火','水','木','金','土'];
+    const ds=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${dn[d.getDay()]}）`;
+    let h=`<div style="padding:20px;font-family:sans-serif;color:#1e293b;font-size:13px;line-height:1.7;">
+        <h1 style="font-size:20px;color:#1d4ed8;margin-bottom:4px;font-weight:900;">📋 毎日の作業日報</h1>
+        <p style="font-size:15px;color:#374151;font-weight:700;margin-bottom:20px;padding-bottom:10px;border-bottom:3px solid #3b82f6;">${ds}</p>`;
+    currentEntries.forEach((e,i)=>{
+        h+=`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;">`;
+        h+=`<div style="font-weight:800;color:#1d4ed8;font-size:14px;margin-bottom:6px;">${i+1}件目${e.skipped?' : ⚡省略登録':` : ${e.area} ${e.areaDetail}`}</div>`;
+        if(!e.skipped) h+=`<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">時間:${e.time}頃 ｜ 住居:${e.housing} ｜ ${e.type} ｜ 圧力:${e.pressure}<br>器具:${(e.appliances||[]).join('・')} ｜ プラン:${e.plan}</div>`;
+        h+=`<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:8px;border-radius:4px;margin-bottom:6px;"><strong style="color:#dc2626;">問題:</strong> ${e.problem||'なし'}</div>`;
+        h+=`<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:8px;border-radius:4px;"><strong style="color:#16a34a;">FB:</strong> ${e.feedback||'なし'}</div></div>`;
+    });
+    h+=`<div style="margin-top:16px;padding:14px;background:#eff6ff;border:2px solid #3b82f6;border-radius:8px;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px;">📝 総括</div><div style="white-space:pre-wrap;">${document.getElementById('dailySummary').value||'なし'}</div></div>`;
+    h+=`<div style="margin-top:10px;padding:14px;background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;"><div style="font-weight:800;color:#16a34a;margin-bottom:6px;">📎 備考</div><div style="white-space:pre-wrap;">${document.getElementById('dailyNotes').value||'なし'}</div></div>`;
+    h+=`<div style="margin-top:20px;text-align:center;font-size:10px;color:#9ca3af;">作業日報 - ${ds}</div></div>`;
+    const el=document.getElementById('pdfContent'); el.innerHTML=h;
+    html2pdf().set({margin:[10,10,10,10],filename:`日報_${dk}.pdf`,image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(el).save().then(()=>{el.innerHTML='';showFlash('📄 PDF保存しました');});
+}
+
+// ========== JSON出力/取込 ==========
+function exportData() {
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));
+    a.download=`report_backup_${new Date().toISOString().split('T')[0]}.json`; a.click();
+}
+async function importData(event) {
+    const reader=new FileReader();
+    reader.onload=async(e)=>{
+        const imp=JSON.parse(e.target.result); db={...db,...imp}; setLocalDB(db);
+        if(isOnlineMode&&authUser){ for(const[k,v] of Object.entries(imp)){ try{await getDocRef(k).set(v);}catch(err){} } }
+        loadData(document.getElementById('datePicker').value); showFlash('📥 インポートしました');
+    };
+    reader.readAsText(event.target.files[0]);
+}
+
+// ========== 起動 ==========
+if (!firebaseReady) useOffline();
 </script>
 </body>
 </html>
