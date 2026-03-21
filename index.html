@@ -161,47 +161,43 @@
             </div>
         </div>
 
-        <div id="skipLabel" class="hidden mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-bold text-center">⚡ ①〜⑦を省略中（⑧⑨のみ入力モード）</div>
+        <div id="skipLabel" class="hidden mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-bold text-center">⚡ ①〜⑦を省略中（⑧のみ入力モード）</div>
 
-        <div class="space-y-4 border-t pt-4">
-            <div>
-                <div class="flex justify-between items-center mb-1">
-                    <label class="text-sm font-bold text-red-600">⑧ 具体的問題</label>
-                    <button onclick="startVoice('problem')" class="mic-btn text-red-400" id="mic-problem">🎤 音声入力</button>
-                </div>
-                <textarea id="problem" class="border p-3 rounded-lg w-full h-24 text-sm"></textarea>
+        <!-- ⑧ 具体的問題とフィードバック（Q&A形式） -->
+        <div class="border-t pt-4">
+            <div class="flex justify-between items-center mb-3">
+                <label class="text-sm font-bold text-blue-700">⑧ 具体的問題とフィードバック</label>
+                <button onclick="addQA()" class="text-xs font-bold bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200">＋ Q&A追加</button>
             </div>
-            <div>
-                <div class="flex justify-between items-center mb-1">
-                    <label class="text-sm font-bold text-green-600">⑨ ﾌｨｰﾄﾞﾊﾞｯｸ</label>
-                    <button onclick="startVoice('feedback')" class="mic-btn text-green-400" id="mic-feedback">🎤 音声入力</button>
-                </div>
-                <textarea id="feedback" class="border p-3 rounded-lg w-full h-24 text-sm"></textarea>
-            </div>
+            <div id="qaContainer"></div>
         </div>
 
-        <!-- ⑩ 画像添付 -->
+        <!-- 写真添付 -->
         <div class="mt-4 border-t pt-4">
             <div class="flex justify-between items-center mb-2">
-                <label class="text-sm font-bold text-indigo-600">📷 ⑩ 写真添付</label>
+                <label class="text-sm font-bold text-indigo-600">📷 写真添付</label>
                 <span id="imgSizeInfo" class="text-[10px] text-gray-400"></span>
             </div>
-            <div class="flex gap-2 mb-2">
-                <label class="flex-1 text-center bg-indigo-50 text-indigo-700 border-2 border-indigo-200 py-3 rounded-lg text-xs font-bold cursor-pointer hover:bg-indigo-100 transition">
-                    📁 ファイルから選択
-                    <input type="file" accept="image/*" multiple class="hidden" onchange="handleImageSelect(event)">
-                </label>
-                <label class="flex-1 text-center bg-indigo-50 text-indigo-700 border-2 border-indigo-200 py-3 rounded-lg text-xs font-bold cursor-pointer hover:bg-indigo-100 transition">
-                    📸 カメラで撮影
-                    <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelect(event)">
-                </label>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 mb-1">紐付け先</label>
+                    <select id="photoLinkTo" class="border p-2 rounded-lg w-full text-xs"></select>
+                </div>
+                <div class="flex items-end gap-1">
+                    <label class="flex-1 text-center bg-indigo-50 text-indigo-700 border-2 border-indigo-200 py-2 rounded-lg text-[10px] font-bold cursor-pointer">
+                        📁 選択 <input type="file" accept="image/*" multiple class="hidden" onchange="handleImageSelect(event)">
+                    </label>
+                    <label class="flex-1 text-center bg-indigo-50 text-indigo-700 border-2 border-indigo-200 py-2 rounded-lg text-[10px] font-bold cursor-pointer">
+                        📸 撮影 <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleImageSelect(event)">
+                    </label>
+                </div>
             </div>
-            <div id="imgPreview" class="img-preview-grid"></div>
+            <div id="imgPreview"></div>
             <div id="imgSizeBar" style="display:none;">
                 <div class="flex justify-between text-[10px] text-gray-400 mt-2"><span>容量</span><span id="imgSizeText">0 / 800 KB</span></div>
                 <div style="background:#e2e8f0;border-radius:2px;height:4px;"><div id="imgSizeBarInner" class="img-size-bar" style="background:#3b82f6;width:0%;height:100%;"></div></div>
             </div>
-            <p class="text-[10px] text-gray-400 mt-2">※ 画像は自動圧縮されます（1枚あたり最大200KB・合計800KBまで）</p>
+            <p class="text-[10px] text-gray-400 mt-2">※ 画像は自動圧縮（1枚最大200KB・合計800KB）</p>
         </div>
 
         <button id="saveBtn" onclick="saveEntry()" class="w-full mt-4 bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all">この案件を登録</button>
@@ -312,7 +308,7 @@ if (firebaseReady) {
 }
 
 // ========== データ管理 ==========
-let db = {}, currentEntries = [], currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ","給湯器"], editingId = null, isSkipMode = false, currentImages = [];
+let db = {}, currentEntries = [], currentAppliances = ["ﾋﾞﾙﾄｲﾝｺﾝﾛ","給湯器"], editingId = null, isSkipMode = false, currentImages = [], currentQA = [{q:'',a:''}];
 
 function getLocalDB() { return JSON.parse(localStorage.getItem('tohoDailyReportDB')) || {}; }
 function setLocalDB(d) { localStorage.setItem('tohoDailyReportDB', JSON.stringify(d)); }
@@ -339,9 +335,9 @@ async function loadData(dateKey) {
     document.getElementById('dailyNotes').value = data.notes || "";
     editingId = null;
     document.getElementById('saveBtn').innerText = "この案件を登録";
-    currentImages = [];
+    currentImages = []; currentQA = [{q:'',a:''}];
     renderEntries(); renderAppliances();
-    try { renderImagePreview(); } catch(e) {}
+    try { renderImagePreview(); renderQA(); } catch(e) {}
 }
 
 function updateSync(s) {
@@ -362,7 +358,7 @@ function startVoice(targetId) {
 }
 
 // ========== 初期化 ==========
-function initApp() { db = getLocalDB(); initTimeSelects(); setCurrentDate(new Date()); }
+function initApp() { db = getLocalDB(); initTimeSelects(); setCurrentDate(new Date()); renderQA(); }
 function initTimeSelects() {
     const hS = document.getElementById('hour');
     if (hS.options.length > 0) return;
@@ -397,10 +393,55 @@ function renderAppliances() { document.getElementById('applianceList').innerHTML
 function addAppliance() { const v=document.getElementById('applianceSelect').value; if(!currentAppliances.includes(v)){currentAppliances.push(v);renderAppliances();} }
 function removeAppliance(i) { currentAppliances.splice(i,1); renderAppliances(); }
 
+// ========== Q&A管理 ==========
+function addQA() { currentQA.push({q:'',a:''}); renderQA(); }
+function removeQA(idx) { if(currentQA.length<=1) return; currentQA.splice(idx,1); renderQA(); updatePhotoLinkOptions(); }
+function renderQA() {
+    const c = document.getElementById('qaContainer');
+    c.innerHTML = currentQA.map((qa,i) => `
+        <div class="mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg relative">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-xs font-black text-blue-700">#${i+1}</span>
+                ${currentQA.length>1?`<button onclick="removeQA(${i})" class="text-[10px] text-red-400 border border-red-100 px-2 py-0.5 rounded">削除</button>`:''}
+            </div>
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-black text-red-600 w-7 flex-shrink-0">Q${i+1}</span>
+                <input type="text" value="${(qa.q||'').replace(/"/g,'&quot;')}" oninput="currentQA[${i}].q=this.value" placeholder="問題・状況を入力" class="border p-2 rounded-lg w-full text-sm">
+                <button onclick="startVoiceQA(${i},'q')" class="mic-btn text-red-400 text-xs flex-shrink-0">🎤</button>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-black text-green-600 w-7 flex-shrink-0">A${i+1}</span>
+                <input type="text" value="${(qa.a||'').replace(/"/g,'&quot;')}" oninput="currentQA[${i}].a=this.value" placeholder="対処・フィードバックを入力" class="border p-2 rounded-lg w-full text-sm">
+                <button onclick="startVoiceQA(${i},'a')" class="mic-btn text-green-400 text-xs flex-shrink-0">🎤</button>
+            </div>
+        </div>
+    `).join('');
+    updatePhotoLinkOptions();
+}
+
+function startVoiceQA(idx, type) {
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'ja-JP';
+    recognition.onresult = (ev) => {
+        const text = ev.results[0][0].transcript;
+        currentQA[idx][type] += (currentQA[idx][type]?' ':'') + text;
+        renderQA();
+    };
+    recognition.start();
+}
+
+function updatePhotoLinkOptions() {
+    const sel = document.getElementById('photoLinkTo');
+    if(!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="general">全般</option>' + currentQA.map((_,i)=>`<option value="Q${i+1}">Q${i+1}に紐付け</option>`).join('');
+    if(prev && sel.querySelector(`option[value="${prev}"]`)) sel.value = prev;
+}
+
 // ========== 画像添付 ==========
-const IMG_MAX_SIZE = 200 * 1024; // 1枚200KB
-const IMG_TOTAL_MAX = 800 * 1024; // 合計800KB
-const IMG_MAX_DIM = 1200; // 長辺1200px
+const IMG_MAX_SIZE = 200 * 1024;
+const IMG_TOTAL_MAX = 800 * 1024;
+const IMG_MAX_DIM = 1200;
 
 function compressImage(file) {
     return new Promise((resolve, reject) => {
@@ -414,7 +455,6 @@ function compressImage(file) {
                 else if (h > IMG_MAX_DIM) { w = Math.round(w * IMG_MAX_DIM / h); h = IMG_MAX_DIM; }
                 canvas.width = w; canvas.height = h;
                 canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                // 品質を調整して200KB以下に
                 let quality = 0.7;
                 let dataUrl = canvas.toDataURL('image/jpeg', quality);
                 while (dataUrl.length * 0.75 > IMG_MAX_SIZE && quality > 0.2) {
@@ -432,7 +472,7 @@ function compressImage(file) {
 }
 
 function getImagesTotalSize() {
-    return currentImages.reduce((sum, d) => sum + Math.round(d.length * 0.75), 0);
+    return currentImages.reduce((sum, d) => sum + Math.round(d.data.length * 0.75), 0);
 }
 
 function updateImageSizeBar() {
@@ -448,52 +488,66 @@ function updateImageSizeBar() {
         bar.style.background = pct > 90 ? '#ef4444' : pct > 70 ? '#f59e0b' : '#3b82f6';
         text.textContent = `${Math.round(total/1024)} / ${Math.round(IMG_TOTAL_MAX/1024)} KB`;
         info.textContent = `${currentImages.length}枚添付中`;
-    } else {
-        container.style.display = 'none';
-        info.textContent = '';
-    }
+    } else { container.style.display = 'none'; info.textContent = ''; }
 }
 
 async function handleImageSelect(event) {
+    const linkTo = document.getElementById('photoLinkTo').value || 'general';
     const files = Array.from(event.target.files);
     for (const file of files) {
         if (!file.type.startsWith('image/')) continue;
         try {
             const dataUrl = await compressImage(file);
             const newTotal = getImagesTotalSize() + Math.round(dataUrl.length * 0.75);
-            if (newTotal > IMG_TOTAL_MAX) {
-                showFlash('⚠️ 容量上限に達しました'); break;
-            }
-            currentImages.push(dataUrl);
-        } catch (e) { console.info('画像圧縮エラー:', e); }
+            if (newTotal > IMG_TOTAL_MAX) { showFlash('⚠️ 容量上限に達しました'); break; }
+            currentImages.push({ data: dataUrl, linkTo: linkTo, caption: '' });
+        } catch (e) {}
     }
     renderImagePreview();
     event.target.value = '';
 }
 
-function removeImage(idx) {
-    currentImages.splice(idx, 1);
-    renderImagePreview();
-}
+function removeImage(idx) { currentImages.splice(idx, 1); renderImagePreview(); }
+
+function updateCaption(idx, val) { currentImages[idx].caption = val; }
 
 function renderImagePreview() {
     const c = document.getElementById('imgPreview');
-    c.innerHTML = currentImages.map((d, i) => `
-        <div class="img-preview-item">
-            <img src="${d}" onclick="showImageModal('${d.substring(0,50)}',${i},'preview')">
-            <button class="img-remove" onclick="removeImage(${i})">×</button>
+    if (!currentImages.length) { c.innerHTML = ''; updateImageSizeBar(); return; }
+    c.innerHTML = `<div class="space-y-2 mt-2">${currentImages.map((img, i) => `
+        <div class="flex gap-2 items-start p-2 bg-indigo-50 rounded-lg border border-indigo-100">
+            <div class="img-preview-item flex-shrink-0">
+                <img src="${img.data}" onclick="showImageModal(${i})">
+                <button class="img-remove" onclick="removeImage(${i})">×</button>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="text-[10px] font-bold text-indigo-600 mb-1">📎 ${img.linkTo === 'general' ? '全般' : img.linkTo}</div>
+                <input type="text" value="${(img.caption||'').replace(/"/g,'&quot;')}" oninput="updateCaption(${i},this.value)" placeholder="写真の説明を入力" class="border p-1.5 rounded text-[11px] w-full">
+            </div>
         </div>
-    `).join('');
+    `).join('')}</div>`;
     updateImageSizeBar();
 }
 
-function showImageModal(src, idx, source) {
-    const data = source === 'preview' ? currentImages[idx] :
-                 source === 'entry' ? currentEntries[idx]?.images?.[parseInt(src)] : src;
-    if (!data) return;
+function showImageModal(idx) {
+    const img = currentImages[idx] || currentEntries.flatMap(e=>(e.images||[])).find((_,j)=>j===idx);
+    if(!img) return;
+    const data = typeof img === 'string' ? img : img.data;
     const modal = document.createElement('div');
     modal.className = 'img-modal';
-    modal.innerHTML = `<img src="${data}">`;
+    modal.innerHTML = `<div style="text-align:center;"><img src="${data}"><div style="color:white;font-size:12px;margin-top:8px;">${img.caption||''}</div></div>`;
+    modal.onclick = () => modal.remove();
+    document.body.appendChild(modal);
+}
+
+function showEntryImageModal(entryIdx, imgIdx) {
+    const e = currentEntries[entryIdx];
+    if(!e || !e.images || !e.images[imgIdx]) return;
+    const img = e.images[imgIdx];
+    const data = typeof img === 'string' ? img : img.data;
+    const modal = document.createElement('div');
+    modal.className = 'img-modal';
+    modal.innerHTML = `<div style="text-align:center;"><img src="${data}"><div style="color:white;font-size:12px;margin-top:8px;">${img.linkTo?'📎 '+img.linkTo:''} ${img.caption||''}</div></div>`;
     modal.onclick = () => modal.remove();
     document.body.appendChild(modal);
 }
@@ -511,17 +565,16 @@ function saveEntry() {
         pressure: isSkipMode?'':document.getElementById('pressure').value,
         appliances: isSkipMode?[]:[...currentAppliances],
         plan: isSkipMode?'':document.getElementById('plan').value,
-        problem: document.getElementById('problem').value,
-        feedback: document.getElementById('feedback').value,
-        images: [...currentImages]
+        qa: currentQA.filter(q => q.q || q.a),
+        images: currentImages.map(img => ({data:img.data, linkTo:img.linkTo, caption:img.caption}))
     };
     if(editingId){ const idx=currentEntries.findIndex(e=>e.id===editingId); if(idx!==-1)currentEntries[idx]=entry; editingId=null; btn.innerText="この案件を登録"; }
     else { currentEntries.push(entry); }
     saveToStorage(); renderEntries();
-    document.getElementById('problem').value=''; document.getElementById('feedback').value='';
-    currentImages = []; renderImagePreview();
+    currentQA = [{q:'',a:''}]; currentImages = []; renderQA(); renderImagePreview();
     setTimeout(()=>{btn.disabled=false;},500);
 }
+
 function editEntry(id) {
     const e=currentEntries.find(x=>x.id===id); if(!e)return; editingId=id;
     if(e.skipped){ if(!isSkipMode)toggleSkip(); }
@@ -533,13 +586,23 @@ function editEntry(id) {
         document.getElementById('pressure').value=e.pressure; document.getElementById('plan').value=e.plan;
         currentAppliances=[...(e.appliances||[])]; renderAppliances();
     }
-    document.getElementById('problem').value=e.problem; document.getElementById('feedback').value=e.feedback;
-    currentImages = [...(e.images||[])]; renderImagePreview();
+    // Q&A復元（旧形式との互換性）
+    if(e.qa && e.qa.length) { currentQA = e.qa.map(q=>({q:q.q||'',a:q.a||''})); }
+    else { currentQA = [{q:e.problem||'', a:e.feedback||''}]; }
+    renderQA();
+    // 画像復元
+    currentImages = (e.images||[]).map(img => typeof img === 'string' ? {data:img, linkTo:'general', caption:''} : {data:img.data, linkTo:img.linkTo||'general', caption:img.caption||''});
+    renderImagePreview();
     document.getElementById('saveBtn').innerText="案件を更新する"; window.scrollTo({top:0,behavior:'smooth'});
 }
+
 function deleteEntry(id) { if(confirm("削除しますか？")){currentEntries=currentEntries.filter(e=>e.id!==id);saveToStorage();renderEntries();} }
 
 // ========== 一覧描画 ==========
+function getQAList(e) {
+    if(e.qa && e.qa.length) return e.qa;
+    return [{q:e.problem||'', a:e.feedback||''}]; // 旧形式互換
+}
 function renderEntries() {
     const c = document.getElementById('entriesContainer');
     if(!currentEntries.length){ c.innerHTML='<p class="text-center text-gray-300 text-xs py-8">まだ案件がありません</p>'; return; }
@@ -547,14 +610,26 @@ function renderEntries() {
     currentEntries.map((e,i)=>{
         const hdr = e.skipped ? '<span class="text-amber-600">⚡ 省略登録</span>' : `${e.area} ${e.areaDetail}`;
         const det = e.skipped ? '' : `<div class="text-[10px] text-gray-400 mb-2">${e.housing} / ${e.type} / ${e.pressure}${e.time?' / '+e.time+'頃':''}</div><div class="text-[10px] text-gray-400 mb-2">器具: ${(e.appliances||[]).join('・')||'-'} ｜ プラン: ${e.plan||'-'}</div>`;
+        const qaList = getQAList(e);
+        const qaHtml = qaList.map((qa,j) => `
+            <div class="mb-2 p-2 bg-gray-50 rounded-lg border border-gray-100">
+                <div class="flex gap-2 items-start mb-1"><span class="text-[10px] font-black text-red-600 flex-shrink-0">Q${j+1}</span><span class="text-xs">${qa.q||'なし'}</span></div>
+                <div class="flex gap-2 items-start"><span class="text-[10px] font-black text-green-600 flex-shrink-0">A${j+1}</span><span class="text-xs">${qa.a||'なし'}</span></div>
+            </div>
+        `).join('');
+        const imgs = (e.images||[]);
+        const imgHtml = imgs.length ? `<div class="flex flex-wrap gap-2 mt-2">${imgs.map((img,j)=>{
+            const d = typeof img==='string'?img:img.data;
+            const lbl = typeof img==='object' && img.linkTo ? img.linkTo : '';
+            const cap = typeof img==='object' && img.caption ? img.caption : '';
+            return `<div class="text-center"><img src="${d}" class="img-entry" onclick="showEntryImageModal(${i},${j})"><div class="text-[9px] text-gray-400 mt-1">${lbl}${cap?' '+cap:''}</div></div>`;
+        }).join('')}</div>` : '';
         return `<div class="card relative">
             <div class="flex justify-between items-start mb-2 font-bold text-blue-800 text-sm"><span>${i+1}件目: ${hdr}</span>${e.time&&!e.skipped?`<span class="text-xs text-gray-300 font-normal">${e.time}頃</span>`:''}</div>
             ${det}
-            <div class="space-y-2 text-xs">
-                <div class="problem-box"><strong>問題:</strong> ${e.problem||'なし'}</div>
-                <div class="feedback-box"><strong>FB:</strong> ${e.feedback||'なし'}</div>
-            </div>
-            ${(e.images&&e.images.length)?`<div class="flex flex-wrap gap-2 mt-3">${e.images.map((img,j)=>`<img src="${img}" class="img-entry" onclick="showImageModal('${j}',${i},'entry')">`).join('')}</div>`:''}
+            <div class="text-xs font-bold text-blue-700 mb-1">⑧ 具体的問題とフィードバック</div>
+            ${qaHtml}
+            ${imgHtml}
             <div class="mt-4 flex gap-2 justify-end">
                 <button onclick="editEntry(${e.id})" class="text-[10px] text-blue-500 border border-blue-100 px-3 py-1 rounded-lg">編集</button>
                 <button onclick="deleteEntry(${e.id})" class="text-[10px] text-red-300 border border-red-50 px-3 py-1 rounded-lg">削除</button>
@@ -572,8 +647,14 @@ function buildDailyText() {
     const dk=document.getElementById('datePicker').value, d=new Date(dk), dn=['日','月','火','水','木','金','土'];
     let t=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${dn[d.getDay()]}曜日） 主なフィードバック\n\n`;
     currentEntries.forEach((e,i)=>{
-        if(e.skipped){ t+=`${i+1}件目：（省略登録）\n⑧具体的問題：${e.problem}\n⑨ﾌｨｰﾄﾞﾊﾞｯｸ：${e.feedback}\n\n`; }
-        else { t+=`${i+1}件目：内容「${e.problem||'特記事項なし'}」\n①地域：${e.area} ${e.areaDetail}　②時間：${e.time}頃　③住居：${e.housing}　④${e.type}\n⑤ガス圧力：${e.pressure}　⑥ガス器具：${(e.appliances||[]).join('・')}　⑦プラン：${e.plan}\n⑧具体的問題：${e.problem}\n⑨ﾌｨｰﾄﾞﾊﾞｯｸ：${e.feedback}\n\n`; }
+        const qaList = getQAList(e);
+        if(e.skipped){ t+=`${i+1}件目：（省略登録）\n`; }
+        else { t+=`${i+1}件目：\n①地域：${e.area} ${e.areaDetail}　②時間：${e.time}頃　③住居：${e.housing}　④${e.type}\n⑤ガス圧力：${e.pressure}　⑥ガス器具：${(e.appliances||[]).join('・')}　⑦プラン：${e.plan}\n`; }
+        t+=`⑧具体的問題とフィードバック：\n`;
+        qaList.forEach((qa,j) => { t+=`  Q${j+1}: ${qa.q||'-'}\n  A${j+1}: ${qa.a||'-'}\n`; });
+        const imgs = (e.images||[]).filter(img=>typeof img==='object'&&img.caption);
+        if(imgs.length) { imgs.forEach(img => { t+=`  📷${img.linkTo||''}：${img.caption}\n`; }); }
+        t+='\n';
     });
     t+=`まとめ：「${document.getElementById('dailySummary').value}」\n備考：「${document.getElementById('dailyNotes').value}」`;
     return t;
@@ -582,7 +663,7 @@ function copyDailyText() { navigator.clipboard.writeText(buildDailyText()).then(
 function copyWeeklyText() {
     let t="【週間まとめ】\n\n"; const cur=new Date(document.getElementById('datePicker').value);
     for(let i=6;i>=0;i--){ const d=new Date(cur);d.setDate(d.getDate()-i); const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; const data=db[k];
-        if(data&&data.entries&&data.entries.length){ t+=`${d.getMonth()+1}/${d.getDate()} (${data.entries.length}件)\n`; data.entries.forEach(e=>t+=`- ${e.areaDetail||'省略'}: ${e.problem||'-'}\n`); t+="\n"; }
+        if(data&&data.entries&&data.entries.length){ t+=`${d.getMonth()+1}/${d.getDate()} (${data.entries.length}件)\n`; data.entries.forEach(e=>{const q1=e.qa&&e.qa[0]?e.qa[0].q:e.problem||'';t+=`- ${e.areaDetail||'省略'}: ${q1||'-'}\n`;}); t+="\n"; }
     }
     navigator.clipboard.writeText(t).then(()=>showFlash('📅 週間分コピーしました'));
 }
@@ -590,8 +671,15 @@ function copyWeeklyText() {
 // ========== CSV出力 ==========
 function downloadCSV() {
     const dk=document.getElementById('datePicker').value;
-    const hdr='件数,地域,地名,時間,住居,区分,圧力,ガス器具,プラン,具体的問題,フィードバック';
-    const rows=currentEntries.map((e,i)=>[i+1,e.area,e.areaDetail,e.time,e.housing,e.type,e.pressure,(e.appliances||[]).join('・'),e.plan,`"${(e.problem||'').replace(/"/g,'""')}"`,`"${(e.feedback||'').replace(/"/g,'""')}"`].join(','));
+    const hdr='件数,地域,地名,時間,住居,区分,圧力,ガス器具,プラン,Q番号,問題,回答,写真説明';
+    const rows = [];
+    currentEntries.forEach((e,i) => {
+        const qaList = getQAList(e);
+        qaList.forEach((qa,j) => {
+            const imgCaps = (e.images||[]).filter(img=>typeof img==='object'&&img.linkTo===`Q${j+1}`).map(img=>img.caption).join('; ');
+            rows.push([i+1,e.area,e.areaDetail,e.time,e.housing,e.type,e.pressure,(e.appliances||[]).join('・'),e.plan,`Q${j+1}`,`"${(qa.q||'').replace(/"/g,'""')}"`,`"${(qa.a||'').replace(/"/g,'""')}"`,`"${imgCaps.replace(/"/g,'""')}"`].join(','));
+        });
+    });
     const csv='\uFEFF'+hdr+'\n'+rows.join('\n')+`\n\n総括,"${(document.getElementById('dailySummary').value||'').replace(/"/g,'""')}"\n備考,"${(document.getElementById('dailyNotes').value||'').replace(/"/g,'""')}"`;
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download=`日報_${dk}.csv`; a.click();
     showFlash('📊 CSV保存しました');
@@ -611,9 +699,16 @@ function buildPdfHtml() {
         h+=`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;page-break-inside:avoid;">`;
         h+=`<div style="font-weight:800;color:#1d4ed8;font-size:14px;margin-bottom:6px;">${i+1}件目${e.skipped?' : ⚡省略登録':` : ${e.area} ${e.areaDetail}`}</div>`;
         if(!e.skipped) h+=`<div style="font-size:11px;color:#6b7280;margin-bottom:8px;">時間:${e.time}頃 ｜ 住居:${e.housing} ｜ ${e.type} ｜ 圧力:${e.pressure}<br>器具:${(e.appliances||[]).join('・')} ｜ プラン:${e.plan}</div>`;
-        h+=`<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:8px;border-radius:4px;margin-bottom:6px;"><strong style="color:#dc2626;">問題:</strong> ${e.problem||'なし'}</div>`;
-        h+=`<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:8px;border-radius:4px;"><strong style="color:#16a34a;">FB:</strong> ${e.feedback||'なし'}</div>`;
-        if(e.images&&e.images.length){ h+=`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${e.images.map(img=>`<img src="${img}" style="max-width:150px;border-radius:4px;border:1px solid #e2e8f0;">`).join('')}</div>`; }
+        h+=`<div style="font-weight:700;color:#1d4ed8;font-size:11px;margin-bottom:4px;margin-top:6px;">⑧ 具体的問題とフィードバック</div>`;
+        const qaList = e.qa && e.qa.length ? e.qa : [{q:e.problem||'', a:e.feedback||''}];
+        qaList.forEach((qa,j)=>{
+            h+=`<div style="background:#f8f8f8;border:1px solid #e5e7eb;border-radius:6px;padding:8px;margin-bottom:4px;">`;
+            h+=`<div style="margin-bottom:3px;"><span style="font-weight:800;color:#dc2626;font-size:11px;">Q${j+1}:</span> <span style="font-size:12px;">${qa.q||'なし'}</span></div>`;
+            h+=`<div><span style="font-weight:800;color:#16a34a;font-size:11px;">A${j+1}:</span> <span style="font-size:12px;">${qa.a||'なし'}</span></div>`;
+            h+=`</div>`;
+        });
+        const imgs = (e.images||[]);
+        if(imgs.length){ h+=`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${imgs.map(img=>{const d=typeof img==='string'?img:img.data;const cap=typeof img==='object'?img.caption||'':'';const lnk=typeof img==='object'?img.linkTo||'':'';return `<div style="text-align:center;"><img src="${d}" style="max-width:140px;border-radius:4px;border:1px solid #e2e8f0;"><div style="font-size:9px;color:#6b7280;margin-top:2px;">${lnk}${cap?' '+cap:''}</div></div>`;}).join('')}</div>`; }
         h+=`</div>`;
     });
     h+=`<div style="margin-top:16px;padding:14px;background:#eff6ff;border:2px solid #3b82f6;border-radius:8px;page-break-inside:avoid;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px;">📝 総括</div><div style="white-space:pre-wrap;">${document.getElementById('dailySummary').value||'なし'}</div></div>`;
