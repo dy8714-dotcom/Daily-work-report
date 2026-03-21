@@ -38,6 +38,10 @@
         .img-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 20000; cursor: pointer; }
         .img-modal img { max-width: 95vw; max-height: 90vh; border-radius: 8px; }
         .img-size-bar { height: 4px; border-radius: 2px; margin-top: 4px; transition: width 0.3s; }
+        .pdf-preview-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 15000; display: flex; flex-direction: column; align-items: center; overflow-y: auto; padding: 20px; }
+        .pdf-preview-container { background: white; width: 720px; max-width: 95vw; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); position: relative; margin: auto; }
+        .pdf-preview-toolbar { position: sticky; top: 0; background: #1e293b; color: white; padding: 12px 20px; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .pdf-preview-toolbar button { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700; border: none; cursor: pointer; }
     </style>
 </head>
 <body class="pb-4">
@@ -226,7 +230,7 @@
 
         <button onclick="saveSummaryExplicit()" class="export-btn bg-blue-600 text-white w-full py-3 rounded-xl text-sm">💾 総括・備考を保存</button>
         <div class="grid grid-cols-3 gap-2">
-            <button onclick="downloadPDF()" class="export-btn bg-red-500 text-white">📄 PDF保存</button>
+            <button onclick="previewPDF()" class="export-btn bg-red-500 text-white">📄 PDF プレビュー</button>
             <button onclick="downloadCSV()" class="export-btn bg-green-600 text-white">📊 CSV保存</button>
             <button onclick="copyDailyText()" class="export-btn bg-purple-600 text-white">📋 テキストコピー</button>
         </div>
@@ -235,8 +239,6 @@
     <div class="h-20"></div>
 </div>
 </div>
-
-<div id="pdfContent" style="position:absolute;left:-9999px;top:0;width:720px;font-family:sans-serif;"></div>
 
 <script>
 // ========== Firebase設定 ==========
@@ -596,13 +598,16 @@ function downloadCSV() {
     showFlash('📊 CSV保存しました');
 }
 
-// ========== PDF出力 ==========
-function downloadPDF() {
+// ========== PDF出力（プレビュー付き） ==========
+function buildPdfHtml() {
     const dk=document.getElementById('datePicker').value, d=new Date(dk), dn=['日','月','火','水','木','金','土'];
     const ds=`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${dn[d.getDay()]}）`;
-    let h=`<div style="padding:20px;font-family:sans-serif;color:#1e293b;font-size:13px;line-height:1.7;">
-        <h1 style="font-size:20px;color:#1d4ed8;margin-bottom:4px;font-weight:900;">📋 毎日の作業日報</h1>
-        <p style="font-size:15px;color:#374151;font-weight:700;margin-bottom:20px;padding-bottom:10px;border-bottom:3px solid #3b82f6;">${ds}</p>`;
+    let h=`<div style="padding:24px;font-family:'Segoe UI',sans-serif;color:#1e293b;font-size:13px;line-height:1.7;">
+        <h1 style="font-size:20px;color:#1d4ed8;margin:0 0 4px 0;font-weight:900;">📋 毎日の作業日報</h1>
+        <p style="font-size:15px;color:#374151;font-weight:700;margin:0 0 20px 0;padding-bottom:10px;border-bottom:3px solid #3b82f6;">${ds}</p>`;
+    if(!currentEntries.length) {
+        h+=`<p style="color:#9ca3af;text-align:center;padding:30px;">案件がありません</p>`;
+    }
     currentEntries.forEach((e,i)=>{
         h+=`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;">`;
         h+=`<div style="font-weight:800;color:#1d4ed8;font-size:14px;margin-bottom:6px;">${i+1}件目${e.skipped?' : ⚡省略登録':` : ${e.area} ${e.areaDetail}`}</div>`;
@@ -615,8 +620,74 @@ function downloadPDF() {
     h+=`<div style="margin-top:16px;padding:14px;background:#eff6ff;border:2px solid #3b82f6;border-radius:8px;"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px;">📝 総括</div><div style="white-space:pre-wrap;">${document.getElementById('dailySummary').value||'なし'}</div></div>`;
     h+=`<div style="margin-top:10px;padding:14px;background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;"><div style="font-weight:800;color:#16a34a;margin-bottom:6px;">📎 備考</div><div style="white-space:pre-wrap;">${document.getElementById('dailyNotes').value||'なし'}</div></div>`;
     h+=`<div style="margin-top:20px;text-align:center;font-size:10px;color:#9ca3af;">作業日報 - ${ds}</div></div>`;
-    const el=document.getElementById('pdfContent'); el.innerHTML=h;
-    html2pdf().set({margin:[10,10,10,10],filename:`日報_${dk}.pdf`,image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(el).save().then(()=>{el.innerHTML='';showFlash('📄 PDF保存しました');});
+    return h;
+}
+
+function previewPDF() {
+    // 既存のプレビューがあれば閉じる
+    const existing = document.getElementById('pdfPreviewOverlay');
+    if(existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pdfPreviewOverlay';
+    overlay.className = 'pdf-preview-overlay';
+
+    const container = document.createElement('div');
+    container.className = 'pdf-preview-container';
+
+    // ツールバー
+    const toolbar = document.createElement('div');
+    toolbar.className = 'pdf-preview-toolbar';
+    toolbar.innerHTML = `
+        <span style="font-size:13px;font-weight:700;">📄 PDFプレビュー</span>
+        <div style="display:flex;gap:8px;">
+            <button onclick="executePdfDownload()" style="background:#ef4444;color:white;">📥 PDFダウンロード</button>
+            <button onclick="document.getElementById('pdfPreviewOverlay').remove()" style="background:#475569;color:white;">✕ 閉じる</button>
+        </div>
+    `;
+
+    // コンテンツ
+    const content = document.createElement('div');
+    content.id = 'pdfRenderArea';
+    content.style.cssText = 'background:white;padding:0;border-radius:0 0 12px 12px;';
+    content.innerHTML = buildPdfHtml();
+
+    container.appendChild(toolbar);
+    container.appendChild(content);
+    overlay.appendChild(container);
+
+    // オーバーレイ背景クリックで閉じる（コンテナ内クリックは除外）
+    overlay.addEventListener('click', (ev) => {
+        if(ev.target === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+}
+
+function executePdfDownload() {
+    const el = document.getElementById('pdfRenderArea');
+    if(!el) return;
+    const dk = document.getElementById('datePicker').value;
+    const btn = event.target;
+    btn.textContent = '⏳ 生成中...';
+    btn.disabled = true;
+
+    html2pdf().set({
+        margin: [10, 10, 10, 10],
+        filename: `日報_${dk}.pdf`,
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(el).save().then(() => {
+        btn.textContent = '📥 PDFダウンロード';
+        btn.disabled = false;
+        showFlash('📄 PDF保存しました');
+    }).catch((err) => {
+        btn.textContent = '📥 PDFダウンロード';
+        btn.disabled = false;
+        showFlash('⚠️ PDF生成に失敗しました');
+        console.error('PDF error:', err);
+    });
 }
 
 // ========== JSON出力/取込 ==========
